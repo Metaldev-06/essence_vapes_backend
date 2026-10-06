@@ -12,6 +12,7 @@ import { Longevity } from '../enums/longevity.enum';
 import { ProductCategory } from '../enums/product-category.enum';
 import { ScentStyle } from '../enums/scent-style.enum';
 import { Sillage } from '../enums/sillage.enum';
+import type { MediaAsset } from '../interfaces/media-asset.interface';
 import type {
   DayUsage,
   FragranceNotes,
@@ -95,6 +96,12 @@ export class Product {
 
   @Column({ type: 'varchar', nullable: true })
   longevity?: Longevity | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  images?: MediaAsset[] | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  videos?: MediaAsset[] | null;
 
   @Column({ type: 'int', default: 0 })
   stock!: number;

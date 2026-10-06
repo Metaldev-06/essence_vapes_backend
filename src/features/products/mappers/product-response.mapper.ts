@@ -31,6 +31,8 @@ export const toProductResponse = (product: Product) => ({
   occasions: product.occasions ?? undefined,
   sillage: product.sillage ?? undefined,
   longevity: product.longevity ?? undefined,
+  images: product.images ?? [],
+  videos: product.videos ?? [],
   stock: product.stock,
   isActive: product.isActive,
   createdAt: product.createdAt,
