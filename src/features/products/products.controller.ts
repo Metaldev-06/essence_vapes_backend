@@ -17,6 +17,8 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 
+import { Role } from '../../common/enums/system-role.enum';
+import { Auth } from '../auth/decorators/auth.decorator';
 import {
   IMAGE_MIME_TYPES,
   MAX_IMAGES_PER_PRODUCT,
@@ -50,22 +52,26 @@ export class ProductsController {
   }
 
   @Post()
+  @Auth(Role.ADMIN)
   create(@Body() dto: CreateProductDto) {
     return this.productsService.create(dto);
   }
 
   @Patch(':id')
+  @Auth(Role.ADMIN)
   update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.productsService.update(id, dto);
   }
 
   @Delete(':id')
+  @Auth(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.productsService.remove(id);
   }
 
   @Post(':id/images')
+  @Auth(Role.ADMIN)
   @UseInterceptors(
     FilesInterceptor('files', MAX_IMAGES_PER_PRODUCT, {
       storage: memoryStorage(),
@@ -86,6 +92,7 @@ export class ProductsController {
   }
 
   @Delete(':id/images')
+  @Auth(Role.ADMIN)
   removeImage(@Param('id') id: string, @Query('publicId') publicId?: string) {
     if (!publicId)
       throw new BadRequestException('publicId query param is required');
@@ -93,6 +100,7 @@ export class ProductsController {
   }
 
   @Post(':id/videos')
+  @Auth(Role.ADMIN)
   @UseInterceptors(
     FilesInterceptor('files', MAX_VIDEOS_PER_PRODUCT, {
       storage: memoryStorage(),
@@ -113,6 +121,7 @@ export class ProductsController {
   }
 
   @Delete(':id/videos')
+  @Auth(Role.ADMIN)
   removeVideo(@Param('id') id: string, @Query('publicId') publicId?: string) {
     if (!publicId)
       throw new BadRequestException('publicId query param is required');

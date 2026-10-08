@@ -4,15 +4,17 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import authConfig from './config/auth.config';
 import cloudinaryConfig from './config/cloudinary.config';
 import { envValidationSchema } from './config/env.validation';
+import { AuthModule } from './features/auth/auth.module';
 import { ProductsModule } from './features/products/products.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [cloudinaryConfig],
+      load: [cloudinaryConfig, authConfig],
       validationSchema: envValidationSchema,
     }),
     TypeOrmModule.forRoot({
@@ -21,6 +23,7 @@ import { ProductsModule } from './features/products/products.module';
       synchronize: true,
       autoLoadEntities: true,
     }),
+    AuthModule,
     ProductsModule,
   ],
   controllers: [AppController],

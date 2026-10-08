@@ -53,6 +53,7 @@
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.2.0",
     "@types/node": "^26.6.2",
+    "@types/passport-jwt": "^4.0.1",
     "@types/streamifier": "^0.1.2",
     "@types/supertest": "^7.2.1",
     "eslint": "^10.11.0",

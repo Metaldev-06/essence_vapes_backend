@@ -7,6 +7,8 @@ import { QueryFailedError } from 'typeorm';
 
 import { LoggerHelper } from './logger.helper';
 
+const UNIQUE_CONSTRAINT_PATTERN = /UNIQUE constraint failed: \w+\.(\w+)/;
+
 export const HandleDBExceptions = (error: any, ctx: string): never => {
   const dbError = error as { code?: string; detail?: string };
 
@@ -16,8 +18,17 @@ export const HandleDBExceptions = (error: any, ctx: string): never => {
 
   // Verifica si el error es un QueryFailedError (usado por TypeORM)
   if (error instanceof QueryFailedError) {
-    // Maneja el caso específico de SQLite para restricciones únicas
-    if (error.message.includes('SQLITE_CONSTRAINT: UNIQUE constraint failed')) {
+    // Maneja el caso específico de SQLite para restricciones únicas.
+    // better-sqlite3 reporta "UNIQUE constraint failed: users.email"
+    // con code "SQLITE_CONSTRAINT_UNIQUE".
+    const uniqueConstraint = UNIQUE_CONSTRAINT_PATTERN.exec(error.message);
+    if (uniqueConstraint) {
+      throw new BadRequestException(
+        `The value for "${uniqueConstraint[1]}" already exists in the database`,
+      );
+    }
+
+    if (error.message.includes('UNIQUE constraint failed')) {
       throw new BadRequestException('The value already exists in the database');
     }
   }

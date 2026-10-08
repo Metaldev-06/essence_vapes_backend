@@ -1,4 +1,7 @@
+import { Role } from '../enums/system-role.enum';
+
 export interface JwtPayload {
-  role: string;
+  id: string;
   email: string;
+  role: Role;
 }

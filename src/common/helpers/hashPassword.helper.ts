@@ -7,6 +7,6 @@ export const HashPassword = async (password: string, salt = 10) => {
 };
 
 export const ComparePassword = async (password: string, hash: string) => {
-  if (!bcrypt.compareSync(password, hash))
+  if (!(await bcrypt.compare(password, hash)))
     throw new UnauthorizedException('Credentials are not valid');
 };
