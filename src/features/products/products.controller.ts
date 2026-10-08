@@ -47,6 +47,13 @@ export class ProductsController {
     return this.productsService.findFeatured();
   }
 
+  /** Same shape as the public catalog, but also includes inactive products - admin only. */
+  @Get('admin/all')
+  @Auth(Role.ADMIN)
+  findAllForAdmin(@Query() query: ProductsQueryDto) {
+    return this.productsService.findAllForAdmin(query);
+  }
+
   /**
    * Public, lightweight stock lookup for a batch of ids - used by the cart to re-check
    * availability for guests (no backend cart to join against) without fetching full product

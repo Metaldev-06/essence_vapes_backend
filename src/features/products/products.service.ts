@@ -38,6 +38,18 @@ export class ProductsService implements OnModuleInit {
   }
 
   async findAll(query: ProductsQueryDto) {
+    return this.queryProducts(query, { activeOnly: true });
+  }
+
+  /** Same filters as the public catalog, but also returns inactive products - admin only. */
+  async findAllForAdmin(query: ProductsQueryDto) {
+    return this.queryProducts(query, { activeOnly: false });
+  }
+
+  private async queryProducts(
+    query: ProductsQueryDto,
+    options: { activeOnly: boolean },
+  ) {
     const {
       limit = 12,
       offset = 0,
@@ -55,9 +67,15 @@ export class ProductsService implements OnModuleInit {
     } = query;
 
     try {
-      const qb = this.productsRepository
-        .createQueryBuilder('product')
-        .where('product.isActive = :isActive', { isActive: true });
+      const qb = this.productsRepository.createQueryBuilder('product');
+
+      if (options.activeOnly) {
+        qb.where('product.isActive = :isActive', { isActive: true });
+      } else {
+        // No WHERE clause to AND the rest against - this always-true base keeps the same
+        // `.andWhere(...)` chain below working whether or not the active filter is applied.
+        qb.where('1 = 1');
+      }
 
       if (term) {
         qb.andWhere(
@@ -108,7 +126,7 @@ export class ProductsService implements OnModuleInit {
         },
       };
     } catch (error) {
-      HandleDBExceptions(error, 'ProductsService.findAll');
+      HandleDBExceptions(error, 'ProductsService.queryProducts');
     }
   }
 

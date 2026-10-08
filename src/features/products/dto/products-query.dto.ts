@@ -26,6 +26,7 @@ const SORTABLE_FIELDS = [
   'year',
   'createdAt',
   'featured',
+  'stock',
 ] as const;
 
 export class ProductsQueryDto {

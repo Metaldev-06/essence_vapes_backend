@@ -13,6 +13,9 @@ export const toProductResponse = (product: Product) => ({
     product.oldPriceValue != null
       ? formatPrice(product.oldPriceValue)
       : undefined,
+  // Raw number alongside the formatted display string above - the admin form needs this to
+  // populate an editable field; the storefront only ever reads `oldPrice`.
+  oldPriceValue: product.oldPriceValue ?? undefined,
   badge: product.badge ?? undefined,
   accent: product.accent,
   category: product.category,
