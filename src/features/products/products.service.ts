@@ -171,7 +171,7 @@ export class ProductsService implements OnModuleInit {
 
     if (currentImages.length + files.length > MAX_IMAGES_PER_PRODUCT) {
       throw new BadRequestException(
-        `A product can have at most ${MAX_IMAGES_PER_PRODUCT} images`,
+        `Un producto puede tener como máximo ${MAX_IMAGES_PER_PRODUCT} imágenes`,
       );
     }
 
@@ -195,7 +195,7 @@ export class ProductsService implements OnModuleInit {
 
     if (!currentImages.some((image) => image.publicId === publicId)) {
       throw new NotFoundException(
-        `Image "${publicId}" not found on this product`,
+        `No se encontró la imagen "${publicId}" en este producto`,
       );
     }
 
@@ -213,7 +213,7 @@ export class ProductsService implements OnModuleInit {
 
     if (currentVideos.length + files.length > MAX_VIDEOS_PER_PRODUCT) {
       throw new BadRequestException(
-        `A product can have at most ${MAX_VIDEOS_PER_PRODUCT} videos`,
+        `Un producto puede tener como máximo ${MAX_VIDEOS_PER_PRODUCT} videos`,
       );
     }
 
@@ -237,7 +237,7 @@ export class ProductsService implements OnModuleInit {
 
     if (!currentVideos.some((video) => video.publicId === publicId)) {
       throw new NotFoundException(
-        `Video "${publicId}" not found on this product`,
+        `No se encontró el video "${publicId}" en este producto`,
       );
     }
 
@@ -252,7 +252,7 @@ export class ProductsService implements OnModuleInit {
   private async findEntityOrFail(id: string): Promise<Product> {
     const product = await this.productsRepository.findOne({ where: { id } });
     if (!product)
-      throw new NotFoundException(`Product with id "${id}" not found`);
+      throw new NotFoundException(`No se encontró el producto con id "${id}"`);
     return product;
   }
 

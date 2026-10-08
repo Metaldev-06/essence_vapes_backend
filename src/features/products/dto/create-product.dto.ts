@@ -30,7 +30,8 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
-    message: 'id must be a lowercase slug (letters, numbers and dashes only)',
+    message:
+      'id debe ser un slug en minúsculas (solo letras, números y guiones)',
   })
   id?: string;
 

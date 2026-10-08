@@ -26,11 +26,13 @@ export class UserRoleGuard implements CanActivate {
     const { user } = context.switchToHttp().getRequest<{ user?: User }>();
 
     if (!user)
-      throw new InternalServerErrorException('User not found in request');
+      throw new InternalServerErrorException(
+        'No se encontró el usuario en la solicitud',
+      );
 
     if (!allowedRoles.includes(user.role)) {
       throw new ForbiddenException(
-        `User ${user.email} needs one of these roles: [${allowedRoles.join(', ')}]`,
+        `El usuario ${user.email} necesita uno de estos roles: [${allowedRoles.join(', ')}]`,
       );
     }
 

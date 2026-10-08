@@ -24,16 +24,18 @@ export const HandleDBExceptions = (error: any, ctx: string): never => {
     const uniqueConstraint = UNIQUE_CONSTRAINT_PATTERN.exec(error.message);
     if (uniqueConstraint) {
       throw new BadRequestException(
-        `The value for "${uniqueConstraint[1]}" already exists in the database`,
+        `El valor de "${uniqueConstraint[1]}" ya existe en la base de datos`,
       );
     }
 
     if (error.message.includes('UNIQUE constraint failed')) {
-      throw new BadRequestException('The value already exists in the database');
+      throw new BadRequestException('El valor ya existe en la base de datos');
     }
   }
 
   LoggerHelper(error, ctx, true);
 
-  throw new InternalServerErrorException('Unexpected error, check server logs');
+  throw new InternalServerErrorException(
+    'Ocurrió un error inesperado, revisá los registros del servidor',
+  );
 };

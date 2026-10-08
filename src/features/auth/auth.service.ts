@@ -90,12 +90,15 @@ export class AuthService implements OnModuleInit {
       },
     });
 
-    if (!user) throw new UnauthorizedException('Credentials are not valid');
+    if (!user)
+      throw new UnauthorizedException('Las credenciales no son válidas');
 
     await ComparePassword(dto.password, user.password);
 
     if (!user.isActive)
-      throw new UnauthorizedException('User is inactive, talk with an admin');
+      throw new UnauthorizedException(
+        'Tu cuenta está inactiva. Hablá con un administrador',
+      );
 
     return this.buildSession(user);
   }

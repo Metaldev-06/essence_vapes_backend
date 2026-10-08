@@ -82,9 +82,20 @@ export class ProductsController {
     @Param('id') id: string,
     @UploadedFiles(
       new ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: IMAGE_MIME_TYPES })
-        .addMaxSizeValidator({ maxSize: MAX_IMAGE_SIZE_BYTES })
-        .build({ fileIsRequired: true }),
+        .addFileTypeValidator({
+          fileType: IMAGE_MIME_TYPES,
+          errorMessage:
+            'El archivo debe ser una imagen (jpeg, png, webp o gif)',
+        })
+        .addMaxSizeValidator({
+          maxSize: MAX_IMAGE_SIZE_BYTES,
+          errorMessage: `La imagen no puede superar los ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB`,
+        })
+        .build({
+          fileIsRequired: true,
+          exceptionFactory: (error) =>
+            new BadRequestException(translateFileError(error)),
+        }),
     )
     files: Express.Multer.File[],
   ) {
@@ -95,7 +106,7 @@ export class ProductsController {
   @Auth(Role.ADMIN)
   removeImage(@Param('id') id: string, @Query('publicId') publicId?: string) {
     if (!publicId)
-      throw new BadRequestException('publicId query param is required');
+      throw new BadRequestException('El parámetro publicId es requerido');
     return this.productsService.removeImage(id, publicId);
   }
 
@@ -111,9 +122,19 @@ export class ProductsController {
     @Param('id') id: string,
     @UploadedFiles(
       new ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: VIDEO_MIME_TYPES })
-        .addMaxSizeValidator({ maxSize: MAX_VIDEO_SIZE_BYTES })
-        .build({ fileIsRequired: true }),
+        .addFileTypeValidator({
+          fileType: VIDEO_MIME_TYPES,
+          errorMessage: 'El archivo debe ser un video (mp4, webm o mov)',
+        })
+        .addMaxSizeValidator({
+          maxSize: MAX_VIDEO_SIZE_BYTES,
+          errorMessage: `El video no puede superar los ${MAX_VIDEO_SIZE_BYTES / (1024 * 1024)}MB`,
+        })
+        .build({
+          fileIsRequired: true,
+          exceptionFactory: (error) =>
+            new BadRequestException(translateFileError(error)),
+        }),
     )
     files: Express.Multer.File[],
   ) {
@@ -124,7 +145,15 @@ export class ProductsController {
   @Auth(Role.ADMIN)
   removeVideo(@Param('id') id: string, @Query('publicId') publicId?: string) {
     if (!publicId)
-      throw new BadRequestException('publicId query param is required');
+      throw new BadRequestException('El parámetro publicId es requerido');
     return this.productsService.removeVideo(id, publicId);
   }
+}
+
+/**
+ * `ParseFilePipeBuilder` only lets per-validator messages be customized (set above); the
+ * "no file(s) selected" case is hardcoded in English by Nest, so it's translated here.
+ */
+function translateFileError(error: string): string {
+  return error === 'File is required' ? 'El archivo es requerido' : error;
 }

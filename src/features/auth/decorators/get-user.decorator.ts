@@ -16,7 +16,9 @@ export const GetUser = createParamDecorator(
     const { user } = context.switchToHttp().getRequest<{ user?: User }>();
 
     if (!user)
-      throw new InternalServerErrorException('User not found in request');
+      throw new InternalServerErrorException(
+        'No se encontró el usuario en la solicitud',
+      );
 
     return data ? user[data] : user;
   },
