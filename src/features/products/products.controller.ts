@@ -29,6 +29,7 @@ import {
 } from './constants/media.constants';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ProductsQueryDto } from './dto/products-query.dto';
+import { StockQueryDto } from './dto/stock-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
 
@@ -44,6 +45,16 @@ export class ProductsController {
   @Get('featured')
   findFeatured() {
     return this.productsService.findFeatured();
+  }
+
+  /**
+   * Public, lightweight stock lookup for a batch of ids - used by the cart to re-check
+   * availability for guests (no backend cart to join against) without fetching full product
+   * payloads. Must stay above `:id` or that route would swallow `/products/stock`.
+   */
+  @Get('stock')
+  getStock(@Query() query: StockQueryDto) {
+    return this.productsService.getStock(query.ids);
   }
 
   @Get(':id')

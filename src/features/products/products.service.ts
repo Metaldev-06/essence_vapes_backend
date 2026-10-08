@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { CloudinaryService } from '../../common/services/cloudinary/cloudinary.service';
 import { HandleDBExceptions } from '../../common/helpers/handleDBExeption.helper';
@@ -118,6 +118,22 @@ export class ProductsService implements OnModuleInit {
       order: { createdAt: 'DESC' },
     });
     return items.map(toProductResponse);
+  }
+
+  /** Minimal, public stock snapshot for a batch of ids - ids that don't exist are just omitted. */
+  async getStock(
+    ids: string[],
+  ): Promise<{ id: string; stock: number; isActive: boolean }[]> {
+    if (ids.length === 0) return [];
+    const products = await this.productsRepository.find({
+      where: { id: In(ids) },
+      select: { id: true, stock: true, isActive: true },
+    });
+    return products.map((product) => ({
+      id: product.id,
+      stock: product.stock,
+      isActive: product.isActive,
+    }));
   }
 
   async findOne(id: string) {

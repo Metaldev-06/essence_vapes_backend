@@ -8,6 +8,7 @@ import authConfig from './config/auth.config';
 import cloudinaryConfig from './config/cloudinary.config';
 import { envValidationSchema } from './config/env.validation';
 import { AuthModule } from './features/auth/auth.module';
+import { CartModule } from './features/cart/cart.module';
 import { FavoritesModule } from './features/favorites/favorites.module';
 import { ProductsModule } from './features/products/products.module';
 
@@ -27,6 +28,7 @@ import { ProductsModule } from './features/products/products.module';
     AuthModule,
     ProductsModule,
     FavoritesModule,
+    CartModule,
   ],
   controllers: [AppController],
   providers: [AppService],
