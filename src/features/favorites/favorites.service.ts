@@ -37,7 +37,7 @@ export class FavoritesService {
     return ids
       .map((id) => productById.get(id))
       .filter((product): product is Product => Boolean(product))
-      .map(toProductResponse);
+      .map((product) => toProductResponse(product));
   }
 
   async add(userId: string, productId: string) {

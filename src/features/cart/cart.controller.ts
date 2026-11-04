@@ -8,10 +8,12 @@ import {
   Param,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 
 import { Auth } from '../auth/decorators/auth.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
+import { BASE_VARIANT_ID } from '../products/mappers/product-response.mapper';
 import { CartService } from './cart.service';
 import { SetCartItemDto } from './dto/set-cart-item.dto';
 
@@ -36,7 +38,12 @@ export class CartController {
     @Param('productId') productId: string,
     @Body() dto: SetCartItemDto,
   ) {
-    return this.cartService.setItem(userId, productId, dto.quantity);
+    return this.cartService.setItem(
+      userId,
+      productId,
+      dto.quantity,
+      dto.variantId ?? BASE_VARIANT_ID,
+    );
   }
 
   @Delete('items/:productId')
@@ -44,8 +51,9 @@ export class CartController {
   removeItem(
     @GetUser('id') userId: string,
     @Param('productId') productId: string,
+    @Query('variantId') variantId?: string,
   ) {
-    return this.cartService.removeItem(userId, productId);
+    return this.cartService.removeItem(userId, productId, variantId ?? BASE_VARIANT_ID);
   }
 
   @Delete()

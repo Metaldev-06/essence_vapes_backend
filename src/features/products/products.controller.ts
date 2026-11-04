@@ -28,9 +28,11 @@ import {
   VIDEO_MIME_TYPES,
 } from './constants/media.constants';
 import { CreateProductDto } from './dto/create-product.dto';
+import { CreateVariantDto } from './dto/create-variant.dto';
 import { ProductsQueryDto } from './dto/products-query.dto';
 import { StockQueryDto } from './dto/stock-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { UpdateVariantDto } from './dto/update-variant.dto';
 import { ProductsService } from './products.service';
 
 @Controller('products')
@@ -165,6 +167,76 @@ export class ProductsController {
     if (!publicId)
       throw new BadRequestException('El parámetro publicId es requerido');
     return this.productsService.removeVideo(id, publicId);
+  }
+
+  @Post(':id/variants')
+  @Auth(Role.ADMIN)
+  addVariant(@Param('id') id: string, @Body() dto: CreateVariantDto) {
+    return this.productsService.addVariant(id, dto);
+  }
+
+  @Patch(':id/variants/:variantId')
+  @Auth(Role.ADMIN)
+  updateVariant(
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+    @Body() dto: UpdateVariantDto,
+  ) {
+    return this.productsService.updateVariant(id, variantId, dto);
+  }
+
+  @Delete(':id/variants/:variantId')
+  @Auth(Role.ADMIN)
+  removeVariant(
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+  ) {
+    return this.productsService.removeVariant(id, variantId);
+  }
+
+  @Post(':id/variants/:variantId/images')
+  @Auth(Role.ADMIN)
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_IMAGES_PER_PRODUCT, {
+      storage: memoryStorage(),
+      limits: { fileSize: MAX_IMAGE_SIZE_BYTES },
+    }),
+  )
+  uploadVariantImages(
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+    @UploadedFiles(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({
+          fileType: IMAGE_MIME_TYPES,
+          errorMessage:
+            'El archivo debe ser una imagen (jpeg, png, webp o gif)',
+        })
+        .addMaxSizeValidator({
+          maxSize: MAX_IMAGE_SIZE_BYTES,
+          errorMessage: `La imagen no puede superar los ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB`,
+        })
+        .build({
+          fileIsRequired: true,
+          exceptionFactory: (error) =>
+            new BadRequestException(translateFileError(error)),
+        }),
+    )
+    files: Express.Multer.File[],
+  ) {
+    return this.productsService.addVariantImages(id, variantId, files);
+  }
+
+  @Delete(':id/variants/:variantId/images')
+  @Auth(Role.ADMIN)
+  removeVariantImage(
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+    @Query('publicId') publicId?: string,
+  ) {
+    if (!publicId)
+      throw new BadRequestException('El parámetro publicId es requerido');
+    return this.productsService.removeVariantImage(id, variantId, publicId);
   }
 }
 

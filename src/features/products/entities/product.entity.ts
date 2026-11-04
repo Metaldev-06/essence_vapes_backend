@@ -34,6 +34,11 @@ export class Product {
   @Column({ type: 'varchar' })
   subtitle!: string;
 
+  // Label for the implicit "base" variant (e.g. "5ml") - only meaningful once extra
+  // ProductVariant rows exist for this product; otherwise it's just unused metadata.
+  @Column({ type: 'varchar', nullable: true })
+  variantLabel?: string | null;
+
   @Column({ type: 'simple-array', default: '' })
   notes!: string[];
 

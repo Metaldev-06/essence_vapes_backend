@@ -16,17 +16,27 @@ import {
 } from './constants/media.constants';
 import { PRODUCTS_SEED } from './data/products.seed';
 import { CreateProductDto } from './dto/create-product.dto';
+import { CreateVariantDto } from './dto/create-variant.dto';
 import { ProductsQueryDto } from './dto/products-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { UpdateVariantDto } from './dto/update-variant.dto';
 import { Product } from './entities/product.entity';
+import { ProductVariant } from './entities/product-variant.entity';
 import { slugify } from './helpers/slugify.helper';
-import { toProductResponse } from './mappers/product-response.mapper';
+import {
+  BASE_VARIANT_ID,
+  flattenProductVariant,
+  ProductResponse,
+  toProductResponse,
+} from './mappers/product-response.mapper';
 
 @Injectable()
 export class ProductsService implements OnModuleInit {
   constructor(
     @InjectRepository(Product)
     private readonly productsRepository: Repository<Product>,
+    @InjectRepository(ProductVariant)
+    private readonly productVariantsRepository: Repository<ProductVariant>,
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
@@ -37,16 +47,17 @@ export class ProductsService implements OnModuleInit {
     }
   }
 
+  /** Public catalog - one row PER VARIANT, so a product with 3 variants shows as 3 cards. */
   async findAll(query: ProductsQueryDto) {
-    return this.queryProducts(query, { activeOnly: true });
+    return this.queryProductsExploded(query, { activeOnly: true });
   }
 
   /** Same filters as the public catalog, but also returns inactive products - admin only. */
   async findAllForAdmin(query: ProductsQueryDto) {
-    return this.queryProducts(query, { activeOnly: false });
+    return this.queryProductsFlat(query, { activeOnly: false });
   }
 
-  private async queryProducts(
+  private async queryProductsFlat(
     query: ProductsQueryDto,
     options: { activeOnly: boolean },
   ) {
@@ -67,25 +78,9 @@ export class ProductsService implements OnModuleInit {
     } = query;
 
     try {
-      const qb = this.productsRepository.createQueryBuilder('product');
+      const qb = this.buildFilteredQuery(options);
 
-      if (options.activeOnly) {
-        qb.where('product.isActive = :isActive', { isActive: true });
-      } else {
-        // No WHERE clause to AND the rest against - this always-true base keeps the same
-        // `.andWhere(...)` chain below working whether or not the active filter is applied.
-        qb.where('1 = 1');
-      }
-
-      if (term) {
-        qb.andWhere(
-          '(LOWER(product.name) LIKE :term OR LOWER(product.brand) LIKE :term)',
-          {
-            term: `%${term.toLowerCase()}%`,
-          },
-        );
-      }
-
+      if (term) this.applyTermFilter(qb, term);
       if (category) qb.andWhere('product.category = :category', { category });
       if (brand) qb.andWhere('LOWER(product.brand) = LOWER(:brand)', { brand });
       if (gender) qb.andWhere('product.gender = :gender', { gender });
@@ -96,18 +91,7 @@ export class ProductsService implements OnModuleInit {
         qb.andWhere('product.priceValue >= :minPrice', { minPrice });
       if (maxPrice !== undefined)
         qb.andWhere('product.priceValue <= :maxPrice', { maxPrice });
-
-      if (styles && styles.length > 0) {
-        qb.andWhere(
-          new Array(styles.length)
-            .fill(null)
-            .map((_, i) => `product.styles LIKE :style${i}`)
-            .join(' OR '),
-          Object.fromEntries(
-            styles.map((style, i) => [`style${i}`, `%${style}%`]),
-          ),
-        );
-      }
+      if (styles && styles.length > 0) this.applyStylesFilter(qb, styles);
 
       qb.orderBy(`product.${sort}`, order.toUpperCase() as 'ASC' | 'DESC')
         .skip(offset)
@@ -116,7 +100,7 @@ export class ProductsService implements OnModuleInit {
       const [items, total] = await qb.getManyAndCount();
 
       return {
-        data: items.map(toProductResponse),
+        data: items.map((item) => toProductResponse(item)),
         pagination: {
           total,
           pages: Math.ceil(total / limit),
@@ -126,8 +110,158 @@ export class ProductsService implements OnModuleInit {
         },
       };
     } catch (error) {
-      HandleDBExceptions(error, 'ProductsService.queryProducts');
+      HandleDBExceptions(error, 'ProductsService.queryProductsFlat');
     }
+  }
+
+  private async queryProductsExploded(
+    query: ProductsQueryDto,
+    options: { activeOnly: boolean },
+  ) {
+    const {
+      limit = 12,
+      offset = 0,
+      order = 'asc',
+      sort = 'createdAt',
+      term,
+      category,
+      brand,
+      gender,
+      accent,
+      styles,
+      featured,
+      minPrice,
+      maxPrice,
+    } = query;
+
+    try {
+      const qb = this.buildFilteredQuery(options);
+
+      if (term) this.applyTermFilter(qb, term);
+      if (category) qb.andWhere('product.category = :category', { category });
+      if (brand) qb.andWhere('LOWER(product.brand) = LOWER(:brand)', { brand });
+      if (gender) qb.andWhere('product.gender = :gender', { gender });
+      if (accent) qb.andWhere('product.accent = :accent', { accent });
+      if (featured !== undefined)
+        qb.andWhere('product.featured = :featured', { featured });
+      if (styles && styles.length > 0) this.applyStylesFilter(qb, styles);
+      // minPrice/maxPrice and pagination/sort are deferred to the row level below, since price
+      // now lives per-variant - a product can have rows both inside and outside the range.
+
+      const products = await qb.getMany();
+      const variantsByProductId = await this.loadVariantsByProductId(
+        products.map((product) => product.id),
+      );
+      let rows = this.explodeProducts(products, variantsByProductId);
+
+      if (minPrice !== undefined)
+        rows = rows.filter((row) => row.priceValue >= minPrice);
+      if (maxPrice !== undefined)
+        rows = rows.filter((row) => row.priceValue <= maxPrice);
+
+      rows = this.sortRows(rows, sort, order);
+
+      const total = rows.length;
+      const data = rows.slice(offset, offset + limit);
+
+      return {
+        data,
+        pagination: {
+          total,
+          pages: Math.ceil(total / limit),
+          current: Math.floor(offset / limit) + 1,
+          limit,
+          offset,
+        },
+      };
+    } catch (error) {
+      HandleDBExceptions(error, 'ProductsService.queryProductsExploded');
+    }
+  }
+
+  private buildFilteredQuery(options: { activeOnly: boolean }) {
+    const qb = this.productsRepository.createQueryBuilder('product');
+    if (options.activeOnly) {
+      qb.where('product.isActive = :isActive', { isActive: true });
+    } else {
+      // No WHERE clause to AND the rest against - this always-true base keeps the same
+      // `.andWhere(...)` chain below working whether or not the active filter is applied.
+      qb.where('1 = 1');
+    }
+    return qb;
+  }
+
+  private applyTermFilter(
+    qb: ReturnType<Repository<Product>['createQueryBuilder']>,
+    term: string,
+  ): void {
+    qb.andWhere(
+      '(LOWER(product.name) LIKE :term OR LOWER(product.brand) LIKE :term)',
+      { term: `%${term.toLowerCase()}%` },
+    );
+  }
+
+  private applyStylesFilter(
+    qb: ReturnType<Repository<Product>['createQueryBuilder']>,
+    styles: string[],
+  ): void {
+    qb.andWhere(
+      new Array(styles.length)
+        .fill(null)
+        .map((_, i) => `product.styles LIKE :style${i}`)
+        .join(' OR '),
+      Object.fromEntries(styles.map((style, i) => [`style${i}`, `%${style}%`])),
+    );
+  }
+
+  private sortRows(
+    rows: ProductResponse[],
+    sort: string,
+    order: 'asc' | 'desc',
+  ): ProductResponse[] {
+    const dir = order === 'desc' ? -1 : 1;
+    return [...rows].sort((a, b) => {
+      const av = (a as Record<string, unknown>)[sort];
+      const bv = (b as Record<string, unknown>)[sort];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (av < bv) return -dir;
+      if (av > bv) return dir;
+      return 0;
+    });
+  }
+
+  private async loadVariantsByProductId(
+    productIds: string[],
+  ): Promise<Map<string, ProductVariant[]>> {
+    const map = new Map<string, ProductVariant[]>();
+    if (productIds.length === 0) return map;
+
+    const variantRows = await this.productVariantsRepository.find({
+      where: { productId: In(productIds) },
+    });
+    for (const variant of variantRows) {
+      const list = map.get(variant.productId) ?? [];
+      list.push(variant);
+      map.set(variant.productId, list);
+    }
+    return map;
+  }
+
+  private explodeProducts(
+    products: Product[],
+    variantsByProductId: Map<string, ProductVariant[]>,
+  ): ProductResponse[] {
+    return products.flatMap((product) => {
+      const variants = variantsByProductId.get(product.id) ?? [];
+      const variantIds = toProductResponse(product, variants).variants.map(
+        (variant) => variant.id,
+      );
+      return variantIds.map((variantId) =>
+        flattenProductVariant(product, variants, variantId),
+      );
+    });
   }
 
   async findFeatured() {
@@ -135,28 +269,59 @@ export class ProductsService implements OnModuleInit {
       where: { isActive: true, featured: true },
       order: { createdAt: 'DESC' },
     });
-    return items.map(toProductResponse);
+    const variantsByProductId = await this.loadVariantsByProductId(
+      items.map((item) => item.id),
+    );
+    return this.explodeProducts(items, variantsByProductId);
   }
 
-  /** Minimal, public stock snapshot for a batch of ids - ids that don't exist are just omitted. */
-  async getStock(
-    ids: string[],
-  ): Promise<{ id: string; stock: number; isActive: boolean }[]> {
-    if (ids.length === 0) return [];
+  /** Minimal, public stock snapshot for a batch of "productId" or "productId::variantId" pairs. */
+  async getStock(pairs: string[]) {
+    if (pairs.length === 0) return [];
+
+    const parsed = pairs.map((pair) => {
+      const [productId, variantId = BASE_VARIANT_ID] = pair.split('::');
+      return { productId, variantId };
+    });
+
+    const productIds = [...new Set(parsed.map((pair) => pair.productId))];
     const products = await this.productsRepository.find({
-      where: { id: In(ids) },
+      where: { id: In(productIds) },
       select: { id: true, stock: true, isActive: true },
     });
-    return products.map((product) => ({
-      id: product.id,
-      stock: product.stock,
-      isActive: product.isActive,
-    }));
+    const productById = new Map(products.map((product) => [product.id, product]));
+
+    const variantIds = parsed
+      .filter((pair) => pair.variantId !== BASE_VARIANT_ID)
+      .map((pair) => pair.variantId);
+    const variantRows =
+      variantIds.length > 0
+        ? await this.productVariantsRepository.find({
+            where: { id: In(variantIds), productId: In(productIds) },
+          })
+        : [];
+    const variantById = new Map(variantRows.map((variant) => [variant.id, variant]));
+
+    return parsed
+      .map(({ productId, variantId }) => {
+        const product = productById.get(productId);
+        if (!product) return null;
+
+        const stock =
+          variantId === BASE_VARIANT_ID
+            ? product.stock
+            : variantById.get(variantId)?.stock;
+        if (stock === undefined) return null;
+
+        return { id: productId, variantId, stock, isActive: product.isActive };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
   }
 
   async findOne(id: string) {
     const product = await this.findEntityOrFail(id);
-    return toProductResponse(product);
+    const variants = await this.findVariantsForProduct(id);
+    return toProductResponse(product, variants);
   }
 
   async create(dto: CreateProductDto) {
@@ -178,7 +343,8 @@ export class ProductsService implements OnModuleInit {
     try {
       Object.assign(product, dto);
       const saved = await this.productsRepository.save(product);
-      return toProductResponse(saved);
+      const variants = await this.findVariantsForProduct(id);
+      return toProductResponse(saved, variants);
     } catch (error) {
       HandleDBExceptions(error, 'ProductsService.update');
     }
@@ -186,6 +352,7 @@ export class ProductsService implements OnModuleInit {
 
   async remove(id: string): Promise<void> {
     const product = await this.findEntityOrFail(id);
+    const variants = await this.findVariantsForProduct(id);
 
     await Promise.all([
       ...(product.images ?? []).map((image) =>
@@ -194,8 +361,16 @@ export class ProductsService implements OnModuleInit {
       ...(product.videos ?? []).map((video) =>
         this.cloudinaryService.destroy(video.publicId, 'video'),
       ),
+      ...variants.flatMap((variant) =>
+        (variant.images ?? []).map((image) =>
+          this.cloudinaryService.destroy(image.publicId, 'image'),
+        ),
+      ),
     ]);
 
+    if (variants.length > 0) {
+      await this.productVariantsRepository.delete({ productId: id });
+    }
     await this.productsRepository.delete(id);
   }
 
@@ -220,7 +395,8 @@ export class ProductsService implements OnModuleInit {
 
     product.images = [...currentImages, ...uploaded];
     const saved = await this.productsRepository.save(product);
-    return toProductResponse(saved);
+    const variants = await this.findVariantsForProduct(id);
+    return toProductResponse(saved, variants);
   }
 
   async removeImage(id: string, publicId: string) {
@@ -238,7 +414,8 @@ export class ProductsService implements OnModuleInit {
       (image) => image.publicId !== publicId,
     );
     const saved = await this.productsRepository.save(product);
-    return toProductResponse(saved);
+    const variants = await this.findVariantsForProduct(id);
+    return toProductResponse(saved, variants);
   }
 
   async addVideos(id: string, files: Express.Multer.File[]) {
@@ -262,7 +439,8 @@ export class ProductsService implements OnModuleInit {
 
     product.videos = [...currentVideos, ...uploaded];
     const saved = await this.productsRepository.save(product);
-    return toProductResponse(saved);
+    const variants = await this.findVariantsForProduct(id);
+    return toProductResponse(saved, variants);
   }
 
   async removeVideo(id: string, publicId: string) {
@@ -280,7 +458,127 @@ export class ProductsService implements OnModuleInit {
       (video) => video.publicId !== publicId,
     );
     const saved = await this.productsRepository.save(product);
-    return toProductResponse(saved);
+    const variants = await this.findVariantsForProduct(id);
+    return toProductResponse(saved, variants);
+  }
+
+  async addVariant(productId: string, dto: CreateVariantDto) {
+    await this.findEntityOrFail(productId);
+
+    try {
+      const variant = this.productVariantsRepository.create({
+        label: dto.label,
+        priceValue: dto.priceValue,
+        stock: dto.stock ?? 0,
+        sortOrder: dto.sortOrder ?? 0,
+        productId,
+      });
+      await this.productVariantsRepository.save(variant);
+      return this.findOne(productId);
+    } catch (error) {
+      HandleDBExceptions(error, 'ProductsService.addVariant');
+    }
+  }
+
+  async updateVariant(
+    productId: string,
+    variantId: string,
+    dto: UpdateVariantDto,
+  ) {
+    const variant = await this.findVariantOrFail(productId, variantId);
+
+    try {
+      Object.assign(variant, dto);
+      await this.productVariantsRepository.save(variant);
+      return this.findOne(productId);
+    } catch (error) {
+      HandleDBExceptions(error, 'ProductsService.updateVariant');
+    }
+  }
+
+  async removeVariant(productId: string, variantId: string) {
+    const variant = await this.findVariantOrFail(productId, variantId);
+
+    await Promise.all(
+      (variant.images ?? []).map((image) =>
+        this.cloudinaryService.destroy(image.publicId, 'image'),
+      ),
+    );
+    await this.productVariantsRepository.delete(variant.id);
+    return this.findOne(productId);
+  }
+
+  async addVariantImages(
+    productId: string,
+    variantId: string,
+    files: Express.Multer.File[],
+  ) {
+    const variant = await this.findVariantOrFail(productId, variantId);
+    const currentImages = variant.images ?? [];
+
+    if (currentImages.length + files.length > MAX_IMAGES_PER_PRODUCT) {
+      throw new BadRequestException(
+        `Una variante puede tener como máximo ${MAX_IMAGES_PER_PRODUCT} imágenes`,
+      );
+    }
+
+    const uploaded = await Promise.all(
+      files.map((file) =>
+        this.cloudinaryService.uploadImage(
+          file,
+          `essence-vapes/products/${productId}/variants/${variant.id}`,
+        ),
+      ),
+    );
+
+    variant.images = [...currentImages, ...uploaded];
+    await this.productVariantsRepository.save(variant);
+    return this.findOne(productId);
+  }
+
+  async removeVariantImage(
+    productId: string,
+    variantId: string,
+    publicId: string,
+  ) {
+    const variant = await this.findVariantOrFail(productId, variantId);
+    const currentImages = variant.images ?? [];
+
+    if (!currentImages.some((image) => image.publicId === publicId)) {
+      throw new NotFoundException(
+        `No se encontró la imagen "${publicId}" en esta variante`,
+      );
+    }
+
+    await this.cloudinaryService.destroy(publicId, 'image');
+    variant.images = currentImages.filter(
+      (image) => image.publicId !== publicId,
+    );
+    await this.productVariantsRepository.save(variant);
+    return this.findOne(productId);
+  }
+
+  private async findVariantsForProduct(
+    productId: string,
+  ): Promise<ProductVariant[]> {
+    return this.productVariantsRepository.find({
+      where: { productId },
+      order: { sortOrder: 'ASC' },
+    });
+  }
+
+  private async findVariantOrFail(
+    productId: string,
+    variantId: string,
+  ): Promise<ProductVariant> {
+    const variant = await this.productVariantsRepository.findOne({
+      where: { id: variantId, productId },
+    });
+    if (!variant)
+      throw new NotFoundException(
+        `No se encontró la variante con id "${variantId}" en este producto`,
+      );
+    return variant;
   }
 
   private async findEntityOrFail(id: string): Promise<Product> {

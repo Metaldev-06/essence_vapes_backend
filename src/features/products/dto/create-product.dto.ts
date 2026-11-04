@@ -47,6 +47,10 @@ export class CreateProductDto {
   @IsNotEmpty()
   subtitle!: string;
 
+  @IsOptional()
+  @IsString()
+  variantLabel?: string;
+
   @IsArray()
   @IsString({ each: true })
   notes!: string[];
