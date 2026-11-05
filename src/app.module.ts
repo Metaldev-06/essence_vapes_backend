@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import authConfig from './config/auth.config';
 import cloudinaryConfig from './config/cloudinary.config';
 import { envValidationSchema } from './config/env.validation';
+import openrouterConfig from './config/openrouter.config';
 import { AuthModule } from './features/auth/auth.module';
 import { CartModule } from './features/cart/cart.module';
 import { FavoritesModule } from './features/favorites/favorites.module';
@@ -16,7 +17,7 @@ import { ProductsModule } from './features/products/products.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [cloudinaryConfig, authConfig],
+      load: [cloudinaryConfig, authConfig, openrouterConfig],
       validationSchema: envValidationSchema,
     }),
     TypeOrmModule.forRoot({

@@ -19,6 +19,7 @@ import { memoryStorage } from 'multer';
 
 import { Role } from '../../common/enums/system-role.enum';
 import { Auth } from '../auth/decorators/auth.decorator';
+import { FragranceAiService } from './ai/fragrance-ai.service';
 import {
   IMAGE_MIME_TYPES,
   MAX_IMAGES_PER_PRODUCT,
@@ -27,6 +28,7 @@ import {
   MAX_VIDEO_SIZE_BYTES,
   VIDEO_MIME_TYPES,
 } from './constants/media.constants';
+import { AiLookupDto } from './dto/ai-lookup.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateVariantDto } from './dto/create-variant.dto';
 import { ProductsQueryDto } from './dto/products-query.dto';
@@ -37,7 +39,10 @@ import { ProductsService } from './products.service';
 
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly fragranceAiService: FragranceAiService,
+  ) {}
 
   @Get()
   findAll(@Query() query: ProductsQueryDto) {
@@ -75,6 +80,17 @@ export class ProductsController {
   @Auth(Role.ADMIN)
   create(@Body() dto: CreateProductDto) {
     return this.productsService.create(dto);
+  }
+
+  /**
+   * Busca en la web (DeepSeek vía OpenRouter, server tools web_search/web_fetch) y sugiere
+   * datos para precargar el form de "nuevo producto" a partir de marca + nombre. No crea ni
+   * modifica nada: devuelve un borrador para que el admin revise antes de guardar.
+   */
+  @Post('ai-lookup')
+  @Auth(Role.ADMIN)
+  aiLookup(@Body() dto: AiLookupDto) {
+    return this.fragranceAiService.suggest(dto.brand, dto.name);
   }
 
   @Patch(':id')

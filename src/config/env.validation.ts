@@ -9,4 +9,9 @@ export const envValidationSchema = Joi.object({
   JWT_EXPIRES_IN: Joi.string().default('2h'),
   ADMIN_EMAIL: Joi.string().email(),
   ADMIN_PASSWORD: Joi.string().min(8),
+
+  // Opcional: habilita el autocompletado con IA en el form de productos.
+  // Sin esto seteado, ese endpoint responde 503 en vez de romper el arranque.
+  OPENROUTER_API_KEY: Joi.string().optional(),
+  DEEPSEEK_MODEL: Joi.string().optional(),
 });
