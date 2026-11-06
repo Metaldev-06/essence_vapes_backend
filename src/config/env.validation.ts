@@ -58,8 +58,8 @@ export const envValidationSchema = Joi.object({
   // Traefik, sin Cloudflare) hay exactamente 1 hop confiable.
   TRUST_PROXY_HOPS: Joi.number().integer().min(0).default(1),
 
-  // Orígenes permitidos por CORS, separados por coma. Default: solo el front local.
-  CORS_ALLOWED_ORIGINS: Joi.string().allow('').default('http://localhost:4200'),
+  // CORS_ALLOWED_ORIGINS NO es una env var - está hardcodeado en security.config.ts a
+  // propósito. Ver ese archivo si hay que cambiar el dominio del frontend.
 
   // Rate limiting genérico (@nestjs/throttler) - todos los valores en ms salvo los *_MAX.
   THROTTLE_GLOBAL_MAX: Joi.number().integer().positive().default(100),

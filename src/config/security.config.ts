@@ -1,17 +1,21 @@
 import { registerAs } from '@nestjs/config';
 
+/**
+ * Orígenes permitidos por CORS - hardcodeado a propósito (no por env var): a diferencia del
+ * resto de esta config, cambiar el dominio del frontend es un cambio de código real, no algo
+ * que deba poder tocarse sin pasar por un commit/deploy. Nunca poner "*" acá. El header
+ * `Origin` que manda el navegador NUNCA termina en "/" - no agregar barra final a ninguno.
+ */
+const CORS_ALLOWED_ORIGINS: string[] = [
+  'http://localhost:4200',
+  'https://www.essencevapes.com.ar',
+  'https://essencevapes.com.ar',
+];
+
 /** Fuente única de toda la config de seguridad - ver BACKEND_SECURITY.md para el detalle. */
 export default registerAs('security', () => ({
   trustProxyHops: Number(process.env.TRUST_PROXY_HOPS ?? 1),
-  // `||` (no `??`) a propósito: un `CORS_ALLOWED_ORIGINS=` vacío en el .env debe caer al
-  // default igual que si no estuviera seteado, nunca resolver a un array vacío (eso
-  // bloquearía TODOS los orígenes en silencio). También se le quita la barra final a cada
-  // origen - el header `Origin` que manda el navegador NUNCA la incluye, así que
-  // "https://sitio.com/" jamás matchearía y rompería CORS en silencio por un typo común.
-  corsAllowedOrigins: (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:4200')
-    .split(',')
-    .map((origin) => origin.trim().replace(/\/+$/, ''))
-    .filter(Boolean),
+  corsAllowedOrigins: CORS_ALLOWED_ORIGINS,
 
   throttle: {
     globalMax: Number(process.env.THROTTLE_GLOBAL_MAX ?? 100),
@@ -36,7 +40,9 @@ export default registerAs('security', () => ({
 
   abuse: {
     suspiciousMax: Number(process.env.ABUSE_SUSPICIOUS_MAX ?? 15),
-    suspiciousWindowMs: Number(process.env.ABUSE_SUSPICIOUS_WINDOW_MS ?? 300_000),
+    suspiciousWindowMs: Number(
+      process.env.ABUSE_SUSPICIOUS_WINDOW_MS ?? 300_000,
+    ),
     blockInitialMs: Number(process.env.ABUSE_BLOCK_INITIAL_MS ?? 600_000),
     blockMultiplier: Number(process.env.ABUSE_BLOCK_MULTIPLIER ?? 3),
     blockMaxMs: Number(process.env.ABUSE_BLOCK_MAX_MS ?? 86_400_000),

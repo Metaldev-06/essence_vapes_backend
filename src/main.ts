@@ -13,8 +13,9 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const PORT = process.env.PORT ?? 3000;
 
-  // `registerAs` factories se pueden llamar directo (sin DI) acá - mismo parseo que usa el
-  // resto de la app vía ConfigService, sin duplicar la lógica de CORS_ALLOWED_ORIGINS.
+  // `registerAs` factories se pueden llamar directo (sin DI) acá - mismo valor que el resto
+  // de la app lee vía ConfigService (trustProxyHops por env var, corsAllowedOrigins
+  // hardcodeado en ese archivo), sin duplicar nada.
   const security = securityConfig();
 
   // Detrás de Traefik (VPS propia con Dokploy, sin Cloudflare) hay exactamente 1 hop
