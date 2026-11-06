@@ -4,6 +4,7 @@ import {
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { In, Repository } from 'typeorm';
@@ -22,6 +23,9 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { UpdateVariantDto } from './dto/update-variant.dto';
 import { Product } from './entities/product.entity';
 import { ProductVariant } from './entities/product-variant.entity';
+import { ProductCategory } from './enums/product-category.enum';
+import { SaleAuthorizationStatus } from './enums/sale-authorization-status.enum';
+import { findRestrictedVapePhrase } from './helpers/vape-restricted-phrases.helper';
 import { slugify } from './helpers/slugify.helper';
 import {
   BASE_VARIANT_ID,
@@ -38,6 +42,7 @@ export class ProductsService implements OnModuleInit {
     @InjectRepository(ProductVariant)
     private readonly productVariantsRepository: Repository<ProductVariant>,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly configService: ConfigService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -188,7 +193,47 @@ export class ProductsService implements OnModuleInit {
       // `.andWhere(...)` chain below working whether or not the active filter is applied.
       qb.where('1 = 1');
     }
+
+    // Solo se aplica al catálogo público (activeOnly=true) - el admin siempre ve todo para
+    // poder revisar/autorizar. Apagado por defecto (ver legal.config.ts): no cambia qué se
+    // muestra hoy a menos que el titular active VAPES_SALE_ENFORCEMENT_ENABLED.
+    if (options.activeOnly && this.isVapesSaleEnforcementEnabled()) {
+      qb.andWhere(
+        '(product.category != :vapesCategory OR product.saleAuthorizationStatus = :authorized)',
+        {
+          vapesCategory: ProductCategory.VAPES,
+          authorized: SaleAuthorizationStatus.AUTORIZADO,
+        },
+      );
+    }
+
     return qb;
+  }
+
+  private isVapesSaleEnforcementEnabled(): boolean {
+    return this.configService.get<boolean>('legal.vapesSaleEnforcementEnabled') ?? false;
+  }
+
+  /**
+   * Guardrail real (no decorativo) contra afirmaciones prohibidas en productos "vapes"
+   * (Ley 26.687): bloquea el guardado, no solo advierte en el front - ver
+   * `vape-restricted-phrases.helper.ts`.
+   */
+  private assertVapeContentAllowed(
+    category: ProductCategory,
+    name?: string,
+    subtitle?: string,
+    notes?: string[],
+  ): void {
+    if (category !== ProductCategory.VAPES) return;
+
+    const restricted = findRestrictedVapePhrase(name, subtitle, notes);
+    if (restricted) {
+      throw new BadRequestException(
+        `No se puede guardar: el texto contiene la frase restringida "${restricted}" para ` +
+          'productos de categoría vapes (Ley 26.687). Revisá nombre, subtítulo y notas.',
+      );
+    }
   }
 
   private applyTermFilter(
@@ -265,10 +310,19 @@ export class ProductsService implements OnModuleInit {
   }
 
   async findFeatured() {
-    const items = await this.productsRepository.find({
+    let items = await this.productsRepository.find({
       where: { isActive: true, featured: true },
       order: { createdAt: 'DESC' },
     });
+
+    if (this.isVapesSaleEnforcementEnabled()) {
+      items = items.filter(
+        (item) =>
+          item.category !== ProductCategory.VAPES ||
+          item.saleAuthorizationStatus === SaleAuthorizationStatus.AUTORIZADO,
+      );
+    }
+
     const variantsByProductId = await this.loadVariantsByProductId(
       items.map((item) => item.id),
     );
@@ -325,11 +379,17 @@ export class ProductsService implements OnModuleInit {
   }
 
   async create(dto: CreateProductDto) {
+    this.assertVapeContentAllowed(dto.category, dto.name, dto.subtitle, dto.notes);
+
     try {
       const id = dto.id
         ? slugify(dto.id)
         : await this.generateUniqueSlug(`${dto.brand}-${dto.name}`);
-      const product = this.productsRepository.create({ ...dto, id });
+      const product = this.productsRepository.create({
+        ...dto,
+        id,
+        requiresAgeVerification: dto.category === ProductCategory.VAPES,
+      });
       const saved = await this.productsRepository.save(product);
       return toProductResponse(saved);
     } catch (error) {
@@ -339,9 +399,17 @@ export class ProductsService implements OnModuleInit {
 
   async update(id: string, dto: UpdateProductDto) {
     const product = await this.findEntityOrFail(id);
+    const category = dto.category ?? product.category;
+    this.assertVapeContentAllowed(
+      category,
+      dto.name ?? product.name,
+      dto.subtitle ?? product.subtitle,
+      dto.notes ?? product.notes,
+    );
 
     try {
       Object.assign(product, dto);
+      product.requiresAgeVerification = category === ProductCategory.VAPES;
       const saved = await this.productsRepository.save(product);
       const variants = await this.findVariantsForProduct(id);
       return toProductResponse(saved, variants);

@@ -16,9 +16,11 @@ import {
 } from 'class-validator';
 
 import { AccentKey } from '../enums/accent-key.enum';
+import { FragranceConcentration } from '../enums/fragrance-concentration.enum';
 import { Gender } from '../enums/gender.enum';
 import { Longevity } from '../enums/longevity.enum';
 import { ProductCategory } from '../enums/product-category.enum';
+import { SaleAuthorizationStatus } from '../enums/sale-authorization-status.enum';
 import { ScentStyle } from '../enums/scent-style.enum';
 import { Sillage } from '../enums/sillage.enum';
 import { DayUsageDto } from './day-usage.dto';
@@ -151,4 +153,53 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // --- Transparencia de producto ---
+  @IsOptional()
+  @IsString()
+  countryOfOrigin?: string;
+
+  @IsOptional()
+  @IsEnum(FragranceConcentration)
+  concentration?: FragranceConcentration;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  netContentMl?: number;
+
+  @IsOptional()
+  @IsString()
+  manufacturerOrImporter?: string;
+
+  @IsOptional()
+  @IsString()
+  sanitaryRegistrationNumber?: string;
+
+  // --- Decants ---
+  @IsOptional()
+  @IsString()
+  decantSourceDescription?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  decantVolumeMl?: number;
+
+  @IsOptional()
+  @IsString()
+  batchNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceProductId?: string;
+
+  // --- Vapes ---
+  @IsOptional()
+  @IsEnum(SaleAuthorizationStatus)
+  saleAuthorizationStatus?: SaleAuthorizationStatus;
+
+  @IsOptional()
+  @IsString()
+  saleAuthorizationCode?: string;
 }

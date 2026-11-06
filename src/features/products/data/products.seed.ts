@@ -2,6 +2,7 @@ import { AccentKey } from '../enums/accent-key.enum';
 import { Gender } from '../enums/gender.enum';
 import { Longevity } from '../enums/longevity.enum';
 import { ProductCategory } from '../enums/product-category.enum';
+import { SaleAuthorizationStatus } from '../enums/sale-authorization-status.enum';
 import { ScentStyle } from '../enums/scent-style.enum';
 import { Sillage } from '../enums/sillage.enum';
 import { Product } from '../entities/product.entity';
@@ -48,6 +49,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: Longevity.H8_12,
     stock: 25,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
   {
     id: 'y-eau-de-parfum',
@@ -88,6 +91,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: Longevity.H6_8,
     stock: 30,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
   {
     id: 'la-vie-est-belle',
@@ -128,6 +133,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: Longevity.H8_12,
     stock: 20,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
   {
     id: 'n5-leau',
@@ -168,6 +175,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: Longevity.H6_8,
     stock: 8,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
   {
     id: 'decant-bleu-chanel',
@@ -208,6 +217,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: Longevity.H6_8,
     stock: 40,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
   {
     id: 'decant-baccarat-540',
@@ -248,6 +259,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: Longevity.H12_PLUS,
     stock: 15,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
   {
     id: 'decant-oud-wood',
@@ -288,6 +301,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: Longevity.H8_12,
     stock: 18,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
   {
     id: 'decant-aventus',
@@ -328,6 +343,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: Longevity.H8_12,
     stock: 22,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
   {
     id: 'pod-aurora-x1',
@@ -357,6 +374,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: null,
     stock: 50,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: true,
   },
   {
     id: 'kit-desechable-5000',
@@ -386,6 +405,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: null,
     stock: 60,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: true,
   },
   {
     id: 'vape-pen-mesh-pro',
@@ -415,6 +436,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: null,
     stock: 35,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: true,
   },
   {
     id: 'esencia-ambar-oud',
@@ -448,6 +471,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: null,
     stock: 45,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
   {
     id: 'esencia-citrica-bergamota',
@@ -481,6 +506,8 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: null,
     stock: 55,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
   {
     id: 'esencia-vainilla-tonka',
@@ -514,5 +541,7 @@ export const PRODUCTS_SEED: ProductSeed[] = [
     longevity: null,
     stock: 50,
     isActive: true,
+    saleAuthorizationStatus: SaleAuthorizationStatus.NO_VERIFICADO,
+    requiresAgeVerification: false,
   },
 ];

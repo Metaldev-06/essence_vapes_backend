@@ -5,8 +5,11 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 
+import { RateLimit } from '../../common/decorators/rate-limit.decorator';
+import { SimpleRateLimitGuard } from '../../common/guards/simple-rate-limit.guard';
 import { AuthService } from './auth.service';
 import { Auth } from './decorators/auth.decorator';
 import { GetUser } from './decorators/get-user.decorator';
@@ -20,12 +23,16 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @UseGuards(SimpleRateLimitGuard)
+  @RateLimit({ windowMs: 15 * 60 * 1000, max: 10 })
   register(@Body() dto: RegisterUserDto) {
     return this.authService.register(dto);
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(SimpleRateLimitGuard)
+  @RateLimit({ windowMs: 15 * 60 * 1000, max: 10 })
   login(@Body() dto: LoginUserDto) {
     return this.authService.login(dto);
   }

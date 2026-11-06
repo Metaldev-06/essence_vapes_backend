@@ -7,17 +7,20 @@ import { AppService } from './app.service';
 import authConfig from './config/auth.config';
 import cloudinaryConfig from './config/cloudinary.config';
 import { envValidationSchema } from './config/env.validation';
+import legalConfig from './config/legal.config';
 import openrouterConfig from './config/openrouter.config';
 import { AuthModule } from './features/auth/auth.module';
 import { CartModule } from './features/cart/cart.module';
 import { FavoritesModule } from './features/favorites/favorites.module';
+import { LegalInfoModule } from './features/legal-info/legal-info.module';
 import { ProductsModule } from './features/products/products.module';
+import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdrawal-requests.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [cloudinaryConfig, authConfig, openrouterConfig],
+      load: [cloudinaryConfig, authConfig, openrouterConfig, legalConfig],
       validationSchema: envValidationSchema,
     }),
     TypeOrmModule.forRoot({
@@ -30,6 +33,8 @@ import { ProductsModule } from './features/products/products.module';
     ProductsModule,
     FavoritesModule,
     CartModule,
+    LegalInfoModule,
+    WithdrawalRequestsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

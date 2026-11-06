@@ -7,9 +7,11 @@ import {
 } from 'typeorm';
 
 import { AccentKey } from '../enums/accent-key.enum';
+import { FragranceConcentration } from '../enums/fragrance-concentration.enum';
 import { Gender } from '../enums/gender.enum';
 import { Longevity } from '../enums/longevity.enum';
 import { ProductCategory } from '../enums/product-category.enum';
+import { SaleAuthorizationStatus } from '../enums/sale-authorization-status.enum';
 import { ScentStyle } from '../enums/scent-style.enum';
 import { Sillage } from '../enums/sillage.enum';
 import type { MediaAsset } from '../interfaces/media-asset.interface';
@@ -113,6 +115,64 @@ export class Product {
 
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;
+
+  // --- Transparencia de producto (sección 5/6 del cumplimiento Argentina) ---
+  // Distinto de `origin` (origen/herencia de la fragancia, p. ej. "Francia") - este es el país
+  // de origen a efectos de rotulado/consumidor, para no mezclar ambos conceptos.
+  @Column({ type: 'varchar', nullable: true })
+  countryOfOrigin?: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  concentration?: FragranceConcentration | null;
+
+  @Column({ type: 'float', nullable: true })
+  netContentMl?: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  manufacturerOrImporter?: string | null;
+
+  // Texto libre: el admin lo completa si/cuando exista un registro real. Nunca se genera o
+  // sugiere un número acá ni en ningún otro lugar del código.
+  @Column({ type: 'varchar', nullable: true })
+  sanitaryRegistrationNumber?: string | null;
+
+  // --- Decants (sección 7) ---
+  // Obligatorio mostrar en la ficha cuando category=decants: explica que es un fraccionamiento,
+  // no un frasco de fábrica.
+  @Column({ type: 'varchar', nullable: true })
+  decantSourceDescription?: string | null;
+
+  @Column({ type: 'float', nullable: true })
+  decantVolumeMl?: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  batchNumber?: string | null;
+
+  // Referencia libre (mismo estilo "join plano por string" que ProductVariant.productId) al
+  // perfume original del que proviene este decant. No hay descuento automático de stock desde
+  // el lote de origen - ver COMPLIANCE_ARGENTINA.md para esa arquitectura futura.
+  @Column({ type: 'varchar', nullable: true })
+  sourceProductId?: string | null;
+
+  // --- Vapes (sección 8) ---
+  // Nunca se asigna "autorizado" por default ni automáticamente - default real es
+  // "no_verificado"; solo un admin humano lo cambia con el registro en mano.
+  @Column({ type: 'varchar', default: SaleAuthorizationStatus.NO_VERIFICADO })
+  saleAuthorizationStatus!: SaleAuthorizationStatus;
+
+  @Column({ type: 'varchar', nullable: true })
+  saleAuthorizationCode?: string | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  saleAuthorizationValidFrom?: Date | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  saleAuthorizationValidUntil?: Date | null;
+
+  // Derivado automáticamente a `true` cuando category=vapes (ver ProductsService) - persistido
+  // como columna propia para poder filtrar/consultar sin recalcular la categoría cada vez.
+  @Column({ type: 'boolean', default: false })
+  requiresAgeVerification!: boolean;
 
   @CreateDateColumn()
   createdAt!: Date;
