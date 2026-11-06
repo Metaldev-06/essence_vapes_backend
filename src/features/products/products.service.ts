@@ -311,11 +311,33 @@ export class ProductsService {
     });
   }
 
+  /**
+   * "Featured" now lives per-row (base product OR individual variant), not only on the product -
+   * marking a product doesn't drag every one of its variants along. This fetches every product
+   * that *could* contribute a featured row (itself, or via one of its variants), explodes them
+   * all the usual way, then keeps only the rows that actually are featured.
+   */
   async findFeatured() {
-    let items = await this.productsRepository.find({
-      where: { isActive: true, featured: true },
-      order: { createdAt: 'DESC' },
-    });
+    const featuredVariantProductIds = (
+      await this.productVariantsRepository
+        .createQueryBuilder('variant')
+        .select('DISTINCT variant.productId', 'productId')
+        .where('variant.featured = :featured', { featured: true })
+        .getRawMany<{ productId: string }>()
+    ).map((row) => row.productId);
+
+    const qb = this.productsRepository
+      .createQueryBuilder('product')
+      .where('product.isActive = :isActive', { isActive: true })
+      .andWhere(
+        featuredVariantProductIds.length > 0
+          ? '(product.featured = :featured OR product.id IN (:...featuredVariantProductIds))'
+          : 'product.featured = :featured',
+        { featured: true, featuredVariantProductIds },
+      )
+      .orderBy('product.createdAt', 'DESC');
+
+    let items = await qb.getMany();
 
     if (this.isVapesSaleEnforcementEnabled()) {
       items = items.filter(
@@ -328,7 +350,9 @@ export class ProductsService {
     const variantsByProductId = await this.loadVariantsByProductId(
       items.map((item) => item.id),
     );
-    return this.explodeProducts(items, variantsByProductId);
+    return this.explodeProducts(items, variantsByProductId).filter(
+      (row) => row.featured,
+    );
   }
 
   /** Minimal, public stock snapshot for a batch of "productId" or "productId::variantId" pairs. */
@@ -543,6 +567,7 @@ export class ProductsService {
         priceValue: dto.priceValue,
         stock: dto.stock ?? 0,
         sortOrder: dto.sortOrder ?? 0,
+        featured: dto.featured ?? false,
         productId,
       });
       await this.productVariantsRepository.save(variant);

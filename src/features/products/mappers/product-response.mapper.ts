@@ -12,6 +12,7 @@ export interface VariantSummary {
   price: string;
   stock: number;
   images: MediaAsset[];
+  featured: boolean;
 }
 
 const toVariantSummary = (
@@ -24,6 +25,7 @@ const toVariantSummary = (
   price: formatPrice(variant.priceValue),
   stock: variant.stock,
   images: variant.images ?? product.images ?? [],
+  featured: variant.featured,
 });
 
 /** The variant array always starts with the "base" one (the product's own price/stock/images). */
@@ -38,6 +40,7 @@ const buildVariants = (
     price: formatPrice(product.priceValue),
     stock: product.stock,
     images: product.images ?? [],
+    featured: product.featured,
   },
   ...variants
     .slice()
@@ -134,6 +137,7 @@ export const flattenProductVariant = (
     price: chosen.price,
     stock: chosen.stock,
     images: chosen.images,
+    featured: chosen.featured,
     oldPrice: chosen.id === BASE_VARIANT_ID ? base.oldPrice : undefined,
     oldPriceValue:
       chosen.id === BASE_VARIANT_ID ? base.oldPriceValue : undefined,

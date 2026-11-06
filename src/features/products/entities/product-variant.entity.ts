@@ -33,6 +33,11 @@ export class ProductVariant {
   @Column({ type: 'int', default: 0 })
   sortOrder!: number;
 
+  // Independent from the parent Product's `featured` - marking the product doesn't cascade to
+  // its variants anymore (a 2ml and a 5ml of the same perfume can be featured independently).
+  @Column({ type: 'boolean', default: false })
+  featured!: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 
