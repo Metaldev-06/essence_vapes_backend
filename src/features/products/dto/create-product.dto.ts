@@ -76,7 +76,7 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   @MaxLength(60)
-  badge?: string;
+  badge?: string | null;
 
   @IsString()
   @Matches(/^#[0-9a-fA-F]{6}$/, {
