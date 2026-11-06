@@ -9,8 +9,10 @@ import cloudinaryConfig from './config/cloudinary.config';
 import { envValidationSchema } from './config/env.validation';
 import legalConfig from './config/legal.config';
 import openrouterConfig from './config/openrouter.config';
+import resendConfig from './config/resend.config';
 import { AuthModule } from './features/auth/auth.module';
 import { CartModule } from './features/cart/cart.module';
+import { ContactModule } from './features/contact/contact.module';
 import { FavoritesModule } from './features/favorites/favorites.module';
 import { LegalInfoModule } from './features/legal-info/legal-info.module';
 import { ProductsModule } from './features/products/products.module';
@@ -20,7 +22,7 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [cloudinaryConfig, authConfig, openrouterConfig, legalConfig],
+      load: [cloudinaryConfig, authConfig, openrouterConfig, legalConfig, resendConfig],
       validationSchema: envValidationSchema,
     }),
     TypeOrmModule.forRoot({
@@ -35,6 +37,7 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
     CartModule,
     LegalInfoModule,
     WithdrawalRequestsModule,
+    ContactModule,
   ],
   controllers: [AppController],
   providers: [AppService],

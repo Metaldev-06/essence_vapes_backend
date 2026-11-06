@@ -3,7 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { MoreThan, Repository } from 'typeorm';
 
+import { escapeHtml } from '../../common/helpers/escape-html.helper';
 import { HandleDBExceptions } from '../../common/helpers/handleDBExeption.helper';
+import { EmailService } from '../../common/services/email/email.service';
 import { PaginationService } from '../../common/services/pagination/pagination.service';
 import { CreateWithdrawalRequestDto } from './dto/create-withdrawal-request.dto';
 import { LookupWithdrawalRequestDto } from './dto/lookup-withdrawal-request.dto';
@@ -19,12 +21,20 @@ import {
 
 const DUPLICATE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+const STATUS_LABELS: Record<WithdrawalStatus, string> = {
+  [WithdrawalStatus.RECIBIDO]: 'Recibida',
+  [WithdrawalStatus.EN_REVISION]: 'En revisión',
+  [WithdrawalStatus.CONFIRMADO]: 'Confirmada',
+  [WithdrawalStatus.RECHAZADO]: 'Rechazada',
+};
+
 @Injectable()
 export class WithdrawalRequestsService {
   constructor(
     @InjectRepository(WithdrawalRequest)
     private readonly repository: Repository<WithdrawalRequest>,
     private readonly paginationService: PaginationService,
+    private readonly emailService: EmailService,
   ) {}
 
   /**
@@ -55,6 +65,7 @@ export class WithdrawalRequestsService {
         trackingCode: await this.generateUniqueTrackingCode(),
       });
       const saved = await this.repository.save(entity);
+      await this.notifyCreated(saved);
       return toWithdrawalResponse(saved);
     } catch (error) {
       HandleDBExceptions(error, 'WithdrawalRequestsService.create');
@@ -95,6 +106,7 @@ export class WithdrawalRequestsService {
       throw new NotFoundException(`No se encontró la solicitud con id "${id}"`);
     }
 
+    const statusChanged = entity.status !== dto.status;
     entity.status = dto.status;
     if (dto.adminNotes !== undefined) entity.adminNotes = dto.adminNotes;
     if (dto.status === WithdrawalStatus.CONFIRMADO || dto.status === WithdrawalStatus.RECHAZADO) {
@@ -102,6 +114,7 @@ export class WithdrawalRequestsService {
     }
 
     const saved = await this.repository.save(entity);
+    if (statusChanged) await this.notifyStatusChanged(saved);
     return toWithdrawalResponse(saved);
   }
 
@@ -111,5 +124,60 @@ export class WithdrawalRequestsService {
       candidate = generateTrackingCode();
     }
     return candidate;
+  }
+
+  /** Confirmación al consumidor (dentro del plazo legal de 24hs) + alerta interna - ninguna de
+   *  las dos debe poder tirar abajo la creación de la solicitud si Resend falla. */
+  private async notifyCreated(entity: WithdrawalRequest): Promise<void> {
+    const { sales, noReply, supportInbox } = this.emailService.addresses;
+
+    await this.emailService.send({
+      from: sales,
+      to: entity.email,
+      subject: `Recibimos tu solicitud de arrepentimiento - código ${entity.trackingCode}`,
+      html: `
+        <h2>¡Hola ${escapeHtml(entity.buyerName)}!</h2>
+        <p>Recibimos tu solicitud de arrepentimiento. Guardá este código de gestión para
+        consultar el estado cuando quieras:</p>
+        <p style="font-size:20px;font-weight:700;letter-spacing:.04em">${entity.trackingCode}</p>
+        <p><strong>Producto:</strong> ${escapeHtml(entity.productDescription)}</p>
+        <p>Te vamos a avisar por este mismo medio cuando actualicemos el estado.</p>
+        <p>Essence Vapes</p>
+      `,
+    });
+
+    await this.emailService.send({
+      from: noReply,
+      to: supportInbox,
+      replyTo: entity.email,
+      subject: `Nueva solicitud de arrepentimiento - ${entity.trackingCode}`,
+      html: `
+        <h2>Nueva solicitud de arrepentimiento</h2>
+        <p><strong>Código:</strong> ${entity.trackingCode}</p>
+        <p><strong>Comprador:</strong> ${escapeHtml(entity.buyerName)} (${escapeHtml(entity.email)})</p>
+        ${entity.phone ? `<p><strong>Teléfono:</strong> ${escapeHtml(entity.phone)}</p>` : ''}
+        ${entity.orderReference ? `<p><strong>Referencia de pedido:</strong> ${escapeHtml(entity.orderReference)}</p>` : ''}
+        <p><strong>Producto:</strong> ${escapeHtml(entity.productDescription)}</p>
+        ${entity.comments ? `<p><strong>Comentarios:</strong> ${escapeHtml(entity.comments)}</p>` : ''}
+        <p>Gestionalo desde el panel admin.</p>
+      `,
+    });
+  }
+
+  private async notifyStatusChanged(entity: WithdrawalRequest): Promise<void> {
+    const { sales } = this.emailService.addresses;
+
+    await this.emailService.send({
+      from: sales,
+      to: entity.email,
+      subject: `Actualizamos tu solicitud ${entity.trackingCode} - ${STATUS_LABELS[entity.status]}`,
+      html: `
+        <h2>¡Hola ${escapeHtml(entity.buyerName)}!</h2>
+        <p>El estado de tu solicitud <strong>${entity.trackingCode}</strong> cambió a:</p>
+        <p style="font-size:18px;font-weight:700">${STATUS_LABELS[entity.status]}</p>
+        ${entity.adminNotes ? `<p><strong>Comentario:</strong> ${escapeHtml(entity.adminNotes)}</p>` : ''}
+        <p>Essence Vapes</p>
+      `,
+    });
   }
 }

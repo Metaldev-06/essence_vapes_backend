@@ -34,8 +34,18 @@ export const envValidationSchema = Joi.object({
   // Ver COMPLIANCE_ARGENTINA.md (riesgo aceptado conscientemente por el titular).
   VAPES_SALE_ENFORCEMENT_ENABLED: Joi.boolean().default(false),
 
-  // Opcional: a dónde debería notificarse un nuevo trámite de arrepentimiento por email.
-  // Hoy no se envía ningún email (no hay librería de correo instalada) - el seguimiento
-  // real es el panel admin. Dejar esto seteado no activa nada por sí solo.
+  // Opcional: a dónde se notifica un nuevo trámite de arrepentimiento por email
+  // (default: RESEND_FROM_SUPPORT / soporte@essencevapes.com.ar si no se setea).
   WITHDRAWAL_NOTIFICATION_EMAIL: Joi.string().optional(),
+
+  // Resend (ver resend.config.ts). Sin RESEND_API_KEY seteada, EmailService no rompe nada -
+  // solo loguea y no envía, igual que el resto de las integraciones opcionales de este proyecto.
+  RESEND_API_KEY: Joi.string().optional(),
+  RESEND_FROM_NO_REPLY: Joi.string().optional(),
+  RESEND_FROM_CONTACT: Joi.string().optional(),
+  RESEND_FROM_SALES: Joi.string().optional(),
+  RESEND_FROM_SUPPORT: Joi.string().optional(),
+  // Opcional: a dónde se notifica un nuevo mensaje de contacto
+  // (default: RESEND_FROM_CONTACT / contacto@essencevapes.com.ar si no se setea).
+  CONTACT_NOTIFICATION_EMAIL: Joi.string().optional(),
 });
