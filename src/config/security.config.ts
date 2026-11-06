@@ -5,10 +5,12 @@ export default registerAs('security', () => ({
   trustProxyHops: Number(process.env.TRUST_PROXY_HOPS ?? 1),
   // `||` (no `??`) a propósito: un `CORS_ALLOWED_ORIGINS=` vacío en el .env debe caer al
   // default igual que si no estuviera seteado, nunca resolver a un array vacío (eso
-  // bloquearía TODOS los orígenes en silencio).
+  // bloquearía TODOS los orígenes en silencio). También se le quita la barra final a cada
+  // origen - el header `Origin` que manda el navegador NUNCA la incluye, así que
+  // "https://sitio.com/" jamás matchearía y rompería CORS en silencio por un typo común.
   corsAllowedOrigins: (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:4200')
     .split(',')
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean),
 
   throttle: {
