@@ -1,7 +1,6 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
-import { RateLimit } from '../../common/decorators/rate-limit.decorator';
-import { SimpleRateLimitGuard } from '../../common/guards/simple-rate-limit.guard';
 import { ContactService } from './contact.service';
 import { CreateContactMessageDto } from './dto/create-contact-message.dto';
 
@@ -12,8 +11,7 @@ export class ContactController {
 
   @Post()
   @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(SimpleRateLimitGuard)
-  @RateLimit({ windowMs: 15 * 60 * 1000, max: 5 })
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
   async create(@Body() dto: CreateContactMessageDto): Promise<void> {
     await this.contactService.send(dto);
   }

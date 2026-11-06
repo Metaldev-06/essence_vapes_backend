@@ -90,14 +90,18 @@ export class WithdrawalRequestsService {
 
   async findAllForAdmin(query: QueryWithdrawalRequestsDto) {
     const { limit = 20, offset = 0, order = 'desc', sort = 'createdAt', status } = query;
-    const result = await this.paginationService.paginate(this.repository, {
-      limit,
-      offset,
-      order,
-      sort: sort as keyof WithdrawalRequest,
-      where: status ? { status } : undefined,
-    });
-    return { ...result, data: result.data.map(toWithdrawalResponse) };
+    try {
+      const result = await this.paginationService.paginate(this.repository, {
+        limit,
+        offset,
+        order,
+        sort: sort as keyof WithdrawalRequest,
+        where: status ? { status } : undefined,
+      });
+      return { ...result, data: result.data.map(toWithdrawalResponse) };
+    } catch (error) {
+      HandleDBExceptions(error, 'WithdrawalRequestsService.findAllForAdmin');
+    }
   }
 
   async updateStatus(id: string, dto: UpdateWithdrawalStatusDto) {

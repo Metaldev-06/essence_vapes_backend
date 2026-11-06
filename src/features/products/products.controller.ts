@@ -12,12 +12,15 @@ import {
   Post,
   Query,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
 
 import { Role } from '../../common/enums/system-role.enum';
+import { UserAwareThrottlerGuard } from '../../common/guards/user-aware-throttler.guard';
 import { Auth } from '../auth/decorators/auth.decorator';
 import { FragranceAiService } from './ai/fragrance-ai.service';
 import {
@@ -37,7 +40,16 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { UpdateVariantDto } from './dto/update-variant.dto';
 import { ProductsService } from './products.service';
 
+/**
+ * Throttle a nivel de clase: tier "modificaciones administrativas" (30/min, rastreado por
+ * usuario admin vía `UserAwareThrottlerGuard` - para rutas públicas sin usuario, este guard se
+ * comporta igual que el `ThrottlerGuard` normal por IP). Las 4 rutas públicas de solo lectura
+ * lo overridean con el tier "catálogo" (60/min), más permisivo para no entorpecer la
+ * navegación normal.
+ */
 @Controller('products')
+@UseGuards(UserAwareThrottlerGuard)
+@Throttle({ default: { limit: 30, ttl: 60_000 } })
 export class ProductsController {
   constructor(
     private readonly productsService: ProductsService,
@@ -45,11 +57,13 @@ export class ProductsController {
   ) {}
 
   @Get()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   findAll(@Query() query: ProductsQueryDto) {
     return this.productsService.findAll(query);
   }
 
   @Get('featured')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   findFeatured() {
     return this.productsService.findFeatured();
   }
@@ -67,11 +81,13 @@ export class ProductsController {
    * payloads. Must stay above `:id` or that route would swallow `/products/stock`.
    */
   @Get('stock')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   getStock(@Query() query: StockQueryDto) {
     return this.productsService.getStock(query.ids);
   }
 
   @Get(':id')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
   }

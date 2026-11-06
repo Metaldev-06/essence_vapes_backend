@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class SetCartItemDto {
   @IsInt()
@@ -8,5 +8,6 @@ export class SetCartItemDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   variantId?: string;
 }

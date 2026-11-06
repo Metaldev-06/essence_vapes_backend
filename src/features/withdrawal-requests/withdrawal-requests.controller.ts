@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
-import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { Role } from '../../common/enums/system-role.enum';
-import { SimpleRateLimitGuard } from '../../common/guards/simple-rate-limit.guard';
+import { UserAwareThrottlerGuard } from '../../common/guards/user-aware-throttler.guard';
 import { Auth } from '../auth/decorators/auth.decorator';
 import { CreateWithdrawalRequestDto } from './dto/create-withdrawal-request.dto';
 import { LookupWithdrawalRequestDto } from './dto/lookup-withdrawal-request.dto';
@@ -19,15 +19,13 @@ export class WithdrawalRequestsController {
   constructor(private readonly withdrawalRequestsService: WithdrawalRequestsService) {}
 
   @Post()
-  @UseGuards(SimpleRateLimitGuard)
-  @RateLimit({ windowMs: 15 * 60 * 1000, max: 5 })
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
   create(@Body() dto: CreateWithdrawalRequestDto) {
     return this.withdrawalRequestsService.create(dto);
   }
 
   @Get('lookup')
-  @UseGuards(SimpleRateLimitGuard)
-  @RateLimit({ windowMs: 15 * 60 * 1000, max: 20 })
+  @Throttle({ default: { limit: 20, ttl: 900_000 } })
   lookup(@Query() dto: LookupWithdrawalRequestDto) {
     return this.withdrawalRequestsService.lookup(dto);
   }
@@ -38,8 +36,11 @@ export class WithdrawalRequestsController {
     return this.withdrawalRequestsService.findAllForAdmin(query);
   }
 
+  /** Modificación administrativa - 30/min por admin (no por IP), ver `UserAwareThrottlerGuard`. */
   @Patch(':id/status')
   @Auth(Role.ADMIN)
+  @UseGuards(UserAwareThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   updateStatus(@Param('id') id: string, @Body() dto: UpdateWithdrawalStatusDto) {
     return this.withdrawalRequestsService.updateStatus(id, dto);
   }

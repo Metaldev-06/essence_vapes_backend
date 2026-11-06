@@ -19,6 +19,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       secretOrKey: configService.get<string>('auth.jwtSecret') ?? '',
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // Fija el algoritmo esperado en vez de dejar que lo decida el header del propio token -
+      // evita ambigüedad/confusión de algoritmo (buena práctica OWASP para JWT).
+      algorithms: ['HS256'],
     });
   }
 

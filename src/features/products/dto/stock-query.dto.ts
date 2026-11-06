@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsString,
+  MaxLength,
 } from 'class-validator';
 
 export class StockQueryDto {
@@ -14,5 +15,6 @@ export class StockQueryDto {
   @ArrayNotEmpty()
   @ArrayMaxSize(100)
   @IsString({ each: true })
+  @MaxLength(150, { each: true })
   ids!: string[];
 }

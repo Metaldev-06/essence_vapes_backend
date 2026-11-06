@@ -1,8 +1,9 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateVariantDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(60)
   label!: string;
 
   @IsInt()

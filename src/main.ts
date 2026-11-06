@@ -1,15 +1,29 @@
-import { NestFactory } from '@nestjs/core';
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+
+import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { LoggerHelper } from './common/helpers/logger.helper';
+import securityConfig from './config/security.config';
 import { translateValidationErrors } from './common/i18n/validation-messages';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const PORT = process.env.PORT ?? 3000;
 
-  app.enableCors();
+  // `registerAs` factories se pueden llamar directo (sin DI) acá - mismo parseo que usa el
+  // resto de la app vía ConfigService, sin duplicar la lógica de CORS_ALLOWED_ORIGINS.
+  const security = securityConfig();
+
+  // Detrás de Traefik (VPS propia con Dokploy, sin Cloudflare) hay exactamente 1 hop
+  // confiable - así `request.ip` (usado por el throttler y por el bloqueo de IPs) refleja la
+  // IP real del cliente en vez de la del proxy. Ver BACKEND_SECURITY.md.
+  app.set('trust proxy', security.trustProxyHops);
+
+  app.use(helmet());
+  app.enableCors({ origin: security.corsAllowedOrigins, credentials: false });
   app.setGlobalPrefix('api/v1');
 
   app.useGlobalPipes(

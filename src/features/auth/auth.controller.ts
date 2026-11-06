@@ -1,15 +1,7 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
-import { RateLimit } from '../../common/decorators/rate-limit.decorator';
-import { SimpleRateLimitGuard } from '../../common/guards/simple-rate-limit.guard';
+import { BruteForceGuard } from '../security/brute-force.guard';
 import { AuthService } from './auth.service';
 import { Auth } from './decorators/auth.decorator';
 import { GetUser } from './decorators/get-user.decorator';
@@ -23,18 +15,21 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @UseGuards(SimpleRateLimitGuard)
-  @RateLimit({ windowMs: 15 * 60 * 1000, max: 10 })
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
   register(@Body() dto: RegisterUserDto) {
     return this.authService.register(dto);
   }
 
+  /**
+   * El rate-limit genérico (IP, `default`) corre igual vía el guard global; la protección de
+   * fuerza bruta real (por cuenta Y por IP, con bloqueos progresivos) es `BruteForceGuard` -
+   * ver `brute-force.service.ts`.
+   */
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(SimpleRateLimitGuard)
-  @RateLimit({ windowMs: 15 * 60 * 1000, max: 10 })
-  login(@Body() dto: LoginUserDto) {
-    return this.authService.login(dto);
+  @UseGuards(BruteForceGuard)
+  login(@Body() dto: LoginUserDto, @Ip() ip: string) {
+    return this.authService.login(dto, ip);
   }
 
   @Get('me')

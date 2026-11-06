@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -11,6 +12,7 @@ import {
   IsString,
   Matches,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -39,22 +41,28 @@ export class CreateProductDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(120)
   brand!: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(150)
   name!: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(200)
   subtitle!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(60)
   variantLabel?: string;
 
   @IsArray()
+  @ArrayMaxSize(30)
   @IsString({ each: true })
+  @MaxLength(60, { each: true })
   notes!: string[];
 
   @IsInt()
@@ -68,6 +76,7 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(60)
   badge?: string;
 
   @IsEnum(AccentKey)
@@ -77,6 +86,7 @@ export class CreateProductDto {
   category!: ProductCategory;
 
   @IsArray()
+  @ArrayMaxSize(10)
   @IsEnum(ScentStyle, { each: true })
   styles!: ScentStyle[];
 
@@ -90,6 +100,7 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(80)
   origin?: string;
 
   @IsOptional()
@@ -109,7 +120,9 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
   @IsString({ each: true })
+  @MaxLength(60, { each: true })
   accords?: string[];
 
   @IsOptional()
@@ -119,7 +132,9 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
   @IsString({ each: true })
+  @MaxLength(60, { each: true })
   mood?: string[];
 
   @IsOptional()
@@ -157,6 +172,7 @@ export class CreateProductDto {
   // --- Transparencia de producto ---
   @IsOptional()
   @IsString()
+  @MaxLength(80)
   countryOfOrigin?: string;
 
   @IsOptional()
@@ -170,15 +186,18 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   manufacturerOrImporter?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(80)
   sanitaryRegistrationNumber?: string;
 
   // --- Decants ---
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   decantSourceDescription?: string;
 
   @IsOptional()
@@ -188,10 +207,12 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(80)
   batchNumber?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(120)
   sourceProductId?: string;
 
   // --- Vapes ---
@@ -201,5 +222,6 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(80)
   saleAuthorizationCode?: string;
 }

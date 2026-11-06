@@ -19,6 +19,7 @@ import { Product } from './entities/product.entity';
 import { ProductVariant } from './entities/product-variant.entity';
 import { ProductCategory } from './enums/product-category.enum';
 import { SaleAuthorizationStatus } from './enums/sale-authorization-status.enum';
+import { matchesFileSignature } from './helpers/file-signature.helper';
 import { findRestrictedVapePhrase } from './helpers/vape-restricted-phrases.helper';
 import { slugify } from './helpers/slugify.helper';
 import {
@@ -195,6 +196,20 @@ export class ProductsService {
     }
 
     return qb;
+  }
+
+  /**
+   * El `FileTypeValidator` de Nest (en el controller) solo mira el `Content-Type` que declara
+   * el cliente - esto chequea el contenido real (magic number) antes de subir nada a
+   * Cloudinary. No confía en la extensión ni en el mimetype declarado.
+   */
+  private assertRealFileSignatures(files: Express.Multer.File[]): void {
+    const invalid = files.find((file) => !matchesFileSignature(file.buffer, file.mimetype));
+    if (invalid) {
+      throw new BadRequestException(
+        `El archivo "${invalid.originalname}" no es un archivo válido de ese tipo (el contenido no coincide con lo declarado).`,
+      );
+    }
   }
 
   private isVapesSaleEnforcementEnabled(): boolean {
@@ -432,6 +447,7 @@ export class ProductsService {
   async addImages(id: string, files: Express.Multer.File[]) {
     const product = await this.findEntityOrFail(id);
     const currentImages = product.images ?? [];
+    this.assertRealFileSignatures(files);
 
     if (currentImages.length + files.length > MAX_IMAGES_PER_PRODUCT) {
       throw new BadRequestException(
@@ -476,6 +492,7 @@ export class ProductsService {
   async addVideos(id: string, files: Express.Multer.File[]) {
     const product = await this.findEntityOrFail(id);
     const currentVideos = product.videos ?? [];
+    this.assertRealFileSignatures(files);
 
     if (currentVideos.length + files.length > MAX_VIDEOS_PER_PRODUCT) {
       throw new BadRequestException(
@@ -570,6 +587,7 @@ export class ProductsService {
   ) {
     const variant = await this.findVariantOrFail(productId, variantId);
     const currentImages = variant.images ?? [];
+    this.assertRealFileSignatures(files);
 
     if (currentImages.length + files.length > MAX_IMAGES_PER_PRODUCT) {
       throw new BadRequestException(

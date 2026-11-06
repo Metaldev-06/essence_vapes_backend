@@ -9,6 +9,7 @@ import {
   IsPositive,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -51,6 +52,7 @@ export class ProductsQueryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   term?: string;
 
   @IsOptional()
@@ -59,6 +61,7 @@ export class ProductsQueryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   brand?: string;
 
   @IsOptional()

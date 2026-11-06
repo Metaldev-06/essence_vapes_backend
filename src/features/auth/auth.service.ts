@@ -17,10 +17,18 @@ import {
 } from '../../common/helpers/hashPassword.helper';
 import { LoggerHelper } from '../../common/helpers/logger.helper';
 import type { JwtPayload } from '../../common/interfaces/jwt-payload.interface';
+import { BruteForceService } from '../security/brute-force.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { RegisterUserDto } from './dto/register-user.dto';
 import { User } from './entities/user.entity';
 import { toUserResponse } from './mappers/user-response.mapper';
+
+const INVALID_CREDENTIALS_MESSAGE = 'Las credenciales no son válidas';
+
+// Hash bcrypt válido (costo 10) de una contraseña que no es la de ningún usuario real - se
+// compara contra esto cuando el email no existe, solo para que bcrypt haga el mismo trabajo
+// (mismo tiempo de respuesta) que si el usuario existiera. Nunca es ella misma un secreto real.
+const DUMMY_PASSWORD_HASH = '$2b$10$UnMOTY4FAhutbds35q7IXOZin1aau5Bpbdw0r.HGar1HkENyLUtN6';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -29,6 +37,7 @@ export class AuthService implements OnModuleInit {
     private readonly usersRepository: Repository<User>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly bruteForceService: BruteForceService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -75,9 +84,16 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  async login(dto: LoginUserDto) {
+  /**
+   * `ip` viene del controller (ver `@Ip()`) para que `BruteForceService` pueda contar fallos
+   * tanto por cuenta como por IP. El mensaje de error es SIEMPRE el mismo genérico - ni
+   * "no existe esa cuenta" ni "está inactiva" se distinguen del simple error de contraseña
+   * (no revelar si una cuenta existe, OWASP A07).
+   */
+  async login(dto: LoginUserDto, ip: string) {
+    const email = dto.email.toLowerCase().trim();
     const user = await this.usersRepository.findOne({
-      where: { email: dto.email.toLowerCase().trim() },
+      where: { email },
       select: {
         id: true,
         email: true,
@@ -90,16 +106,17 @@ export class AuthService implements OnModuleInit {
       },
     });
 
-    if (!user)
-      throw new UnauthorizedException('Las credenciales no son válidas');
+    // Compara SIEMPRE contra un hash real (el del usuario, o uno dummy si no existe) para que
+    // bcrypt haga el mismo trabajo en ambos casos - evita que el tiempo de respuesta delate si
+    // el email está registrado.
+    const passwordMatches = await ComparePassword(dto.password, user?.password ?? DUMMY_PASSWORD_HASH);
 
-    await ComparePassword(dto.password, user.password);
+    if (!user || !passwordMatches || !user.isActive) {
+      await this.bruteForceService.recordFailure(email, ip);
+      throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
+    }
 
-    if (!user.isActive)
-      throw new UnauthorizedException(
-        'Tu cuenta está inactiva. Hablá con un administrador',
-      );
-
+    await this.bruteForceService.recordSuccess(email);
     return this.buildSession(user);
   }
 
