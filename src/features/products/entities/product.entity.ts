@@ -6,7 +6,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { AccentKey } from '../enums/accent-key.enum';
 import { FragranceConcentration } from '../enums/fragrance-concentration.enum';
 import { Gender } from '../enums/gender.enum';
 import { Longevity } from '../enums/longevity.enum';
@@ -53,8 +52,10 @@ export class Product {
   @Column({ type: 'varchar', nullable: true })
   badge?: string | null;
 
+  // Color hexadecimal libre (ej: "#8b5cf6"), elegido con un color picker en el admin - no un
+  // enum cerrado de opciones predefinidas.
   @Column({ type: 'varchar' })
-  accent!: AccentKey;
+  accent!: string;
 
   @Column({ type: 'varchar' })
   category!: ProductCategory;

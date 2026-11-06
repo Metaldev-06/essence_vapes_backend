@@ -8,13 +8,13 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
 
 import { SortOrder } from '../../../common/enums/sort-order.enum';
-import { AccentKey } from '../enums/accent-key.enum';
 import { Gender } from '../enums/gender.enum';
 import { ProductCategory } from '../enums/product-category.enum';
 import { ScentStyle } from '../enums/scent-style.enum';
@@ -69,8 +69,11 @@ export class ProductsQueryDto {
   gender?: Gender;
 
   @IsOptional()
-  @IsEnum(AccentKey)
-  accent?: AccentKey;
+  @IsString()
+  @Matches(/^#[0-9a-fA-F]{6}$/, {
+    message: 'accent debe ser un color hexadecimal válido (ej: #8b5cf6)',
+  })
+  accent?: string;
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>

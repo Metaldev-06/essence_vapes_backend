@@ -17,7 +17,6 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-import { AccentKey } from '../enums/accent-key.enum';
 import { FragranceConcentration } from '../enums/fragrance-concentration.enum';
 import { Gender } from '../enums/gender.enum';
 import { Longevity } from '../enums/longevity.enum';
@@ -79,8 +78,11 @@ export class CreateProductDto {
   @MaxLength(60)
   badge?: string;
 
-  @IsEnum(AccentKey)
-  accent!: AccentKey;
+  @IsString()
+  @Matches(/^#[0-9a-fA-F]{6}$/, {
+    message: 'accent debe ser un color hexadecimal válido (ej: #8b5cf6)',
+  })
+  accent!: string;
 
   @IsEnum(ProductCategory)
   category!: ProductCategory;
