@@ -68,6 +68,13 @@ export class ProductsController {
     return this.productsService.findFeatured();
   }
 
+  /** Distinct ml capacities in the active catalog, for the storefront's capacity filter chips. */
+  @Get('capacities')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  findCapacities() {
+    return this.productsService.findCapacities();
+  }
+
   /** Same shape as the public catalog, but also includes inactive products - admin only. */
   @Get('admin/all')
   @Auth(Role.ADMIN)

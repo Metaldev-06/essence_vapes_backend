@@ -19,6 +19,7 @@ import { Product } from './entities/product.entity';
 import { ProductVariant } from './entities/product-variant.entity';
 import { ProductCategory } from './enums/product-category.enum';
 import { SaleAuthorizationStatus } from './enums/sale-authorization-status.enum';
+import { parseCapacityMl } from './helpers/capacity.helper';
 import { matchesFileSignature } from './helpers/file-signature.helper';
 import { findRestrictedVapePhrase } from './helpers/vape-restricted-phrases.helper';
 import { slugify } from './helpers/slugify.helper';
@@ -125,6 +126,7 @@ export class ProductsService {
       featured,
       minPrice,
       maxPrice,
+      capacityMl,
     } = query;
 
     try {
@@ -138,8 +140,8 @@ export class ProductsService {
       if (featured !== undefined)
         qb.andWhere('product.featured = :featured', { featured });
       if (styles && styles.length > 0) this.applyStylesFilter(qb, styles);
-      // minPrice/maxPrice and pagination/sort are deferred to the row level below, since price
-      // now lives per-variant - a product can have rows both inside and outside the range.
+      // minPrice/maxPrice/capacityMl are deferred to the row level below, since price and label
+      // (capacity) now live per-variant - a product can have rows both inside and outside range.
 
       const products = await qb.getMany();
       const variantsByProductId = await this.loadVariantsByProductId(
@@ -151,6 +153,13 @@ export class ProductsService {
         rows = rows.filter((row) => row.priceValue >= minPrice);
       if (maxPrice !== undefined)
         rows = rows.filter((row) => row.priceValue <= maxPrice);
+      if (capacityMl && capacityMl.length > 0) {
+        const wanted = new Set(capacityMl);
+        rows = rows.filter((row) => {
+          const capacity = parseCapacityMl(row.variantLabel);
+          return capacity !== null && wanted.has(capacity);
+        });
+      }
 
       rows = this.sortRows(rows, sort, order);
 
@@ -353,6 +362,34 @@ export class ProductsService {
     return this.explodeProducts(items, variantsByProductId).filter(
       (row) => row.featured,
     );
+  }
+
+  /**
+   * Distinct ml capacities available right now across the active catalog (base products' own
+   * `variantLabel` plus every `ProductVariant.label`), sorted ascending - lets the storefront
+   * filter chips list exactly what's actually in stock-shape, instead of a hardcoded list.
+   */
+  async findCapacities(): Promise<number[]> {
+    const products = await this.productsRepository.find({
+      where: { isActive: true },
+      select: { id: true, variantLabel: true },
+    });
+    const variants = await this.productVariantsRepository.find({
+      where: { productId: In(products.map((product) => product.id)) },
+      select: { label: true },
+    });
+
+    const labels = [
+      ...products.map((product) => product.variantLabel),
+      ...variants.map((variant) => variant.label),
+    ];
+    const capacities = new Set<number>();
+    for (const label of labels) {
+      const capacity = parseCapacityMl(label);
+      if (capacity !== null) capacities.add(capacity);
+    }
+
+    return [...capacities].sort((a, b) => a - b);
   }
 
   /** Minimal, public stock snapshot for a batch of "productId" or "productId::variantId" pairs. */

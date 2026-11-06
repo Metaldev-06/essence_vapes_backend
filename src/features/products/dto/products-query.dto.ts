@@ -99,4 +99,19 @@ export class ProductsQueryDto {
   @IsInt()
   @Min(0)
   maxPrice?: number;
+
+  // Ml capacity of the variant row (e.g. 2, 5, 10, 100) - matched against the number parsed out
+  // of each row's variantLabel by `parseCapacityMl`, not a stored column.
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string'
+      ? value
+          .split(',')
+          .map((entry) => Number(entry))
+          .filter((entry) => !Number.isNaN(entry))
+      : value,
+  )
+  @IsArray()
+  @IsPositive({ each: true })
+  capacityMl?: number[];
 }
