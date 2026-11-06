@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-  OnModuleInit,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -15,7 +10,6 @@ import {
   MAX_IMAGES_PER_PRODUCT,
   MAX_VIDEOS_PER_PRODUCT,
 } from './constants/media.constants';
-import { PRODUCTS_SEED } from './data/products.seed';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateVariantDto } from './dto/create-variant.dto';
 import { ProductsQueryDto } from './dto/products-query.dto';
@@ -35,7 +29,7 @@ import {
 } from './mappers/product-response.mapper';
 
 @Injectable()
-export class ProductsService implements OnModuleInit {
+export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly productsRepository: Repository<Product>,
@@ -44,13 +38,6 @@ export class ProductsService implements OnModuleInit {
     private readonly cloudinaryService: CloudinaryService,
     private readonly configService: ConfigService,
   ) {}
-
-  async onModuleInit(): Promise<void> {
-    const count = await this.productsRepository.count();
-    if (count === 0) {
-      await this.productsRepository.save(PRODUCTS_SEED);
-    }
-  }
 
   /** Public catalog - one row PER VARIANT, so a product with 3 variants shows as 3 cards. */
   async findAll(query: ProductsQueryDto) {
