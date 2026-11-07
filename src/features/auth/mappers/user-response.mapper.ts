@@ -4,6 +4,8 @@ export const toUserResponse = (user: User) => ({
   id: user.id,
   email: user.email,
   fullName: user.fullName,
+  phone: user.phone,
+  birthDate: user.birthDate,
   role: user.role,
   isActive: user.isActive,
   emailVerified: user.emailVerified,

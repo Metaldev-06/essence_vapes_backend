@@ -24,6 +24,12 @@ export class User {
   @Column({ type: 'varchar' })
   fullName!: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  phone!: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  birthDate!: string | null;
+
   @Column({ type: 'varchar', default: Role.REGULAR })
   role!: Role;
 

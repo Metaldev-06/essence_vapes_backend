@@ -17,6 +17,7 @@ import openrouterConfig from './config/openrouter.config';
 import resendConfig from './config/resend.config';
 import securityConfig from './config/security.config';
 import { AccountSecurityModule } from './features/account-security/account-security.module';
+import { AddressesModule } from './features/addresses/addresses.module';
 import { AuthModule } from './features/auth/auth.module';
 import { CartModule } from './features/cart/cart.module';
 import { ContactModule } from './features/contact/contact.module';
@@ -69,6 +70,7 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
     AuthModule,
     ProductsModule,
     FavoritesModule,
+    AddressesModule,
     CartModule,
     LegalInfoModule,
     WithdrawalRequestsModule,

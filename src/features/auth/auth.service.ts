@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   OnModuleInit,
   UnauthorizedException,
@@ -22,7 +23,6 @@ import {
   buildEmailVerificationEmail,
 } from '../account-security/account-security-emails';
 import { AccountSecurityService } from '../account-security/account-security.service';
-import { SecurityChallengePurpose } from '../account-security/enums/security-challenge-purpose.enum';
 import { BruteForceService } from '../security/brute-force.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { RegisterUserDto } from './dto/register-user.dto';
@@ -151,8 +151,29 @@ export class AuthService implements OnModuleInit {
 
   async updateProfile(user: User, dto: UpdateProfileDto) {
     if (dto.fullName !== undefined) user.fullName = dto.fullName;
+    if (dto.phone !== undefined) user.phone = dto.phone;
+    if (dto.birthDate !== undefined) {
+      if (dto.birthDate !== null) this.assertPlausibleBirthDate(dto.birthDate);
+      user.birthDate = dto.birthDate;
+    }
+
     const saved = await this.usersRepository.save(user);
     return toUserResponse(saved);
+  }
+
+  /** El formato ISO ya lo valida el DTO (`@IsDateString`) - esto solo descarta fechas
+   *  imposibles (futuras, o de más de 120 años), no exige una edad mínima real. */
+  private assertPlausibleBirthDate(birthDate: string): void {
+    const date = new Date(birthDate);
+    const now = new Date();
+    const minDate = new Date(now.getFullYear() - 120, now.getMonth(), now.getDate());
+
+    if (date.getTime() > now.getTime()) {
+      throw new BadRequestException('La fecha de nacimiento no puede ser futura');
+    }
+    if (date.getTime() < minDate.getTime()) {
+      throw new BadRequestException('La fecha de nacimiento no es válida');
+    }
   }
 
   getSecurityStatus(user: User) {
@@ -190,6 +211,8 @@ export class AuthService implements OnModuleInit {
         email: true,
         password: true,
         fullName: true,
+        phone: true,
+        birthDate: true,
         role: true,
         isActive: true,
         emailVerified: true,
