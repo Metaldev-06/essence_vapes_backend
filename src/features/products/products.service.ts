@@ -392,6 +392,16 @@ export class ProductsService {
     return [...capacities].sort((a, b) => a - b);
   }
 
+  /** Distinct brand names across the active catalog, sorted alphabetically, for the storefront's brand filter. */
+  async findBrands(): Promise<string[]> {
+    const products = await this.productsRepository.find({
+      where: { isActive: true },
+      select: { brand: true },
+    });
+    const brands = new Set(products.map((product) => product.brand));
+    return [...brands].sort((a, b) => a.localeCompare(b, 'es'));
+  }
+
   /** Minimal, public stock snapshot for a batch of "productId" or "productId::variantId" pairs. */
   async getStock(pairs: string[]) {
     if (pairs.length === 0) return [];

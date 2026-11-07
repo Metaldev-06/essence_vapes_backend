@@ -75,6 +75,13 @@ export class ProductsController {
     return this.productsService.findCapacities();
   }
 
+  /** Distinct brand names in the active catalog, for the storefront's brand filter. */
+  @Get('brands')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  findBrands() {
+    return this.productsService.findBrands();
+  }
+
   /** Same shape as the public catalog, but also includes inactive products - admin only. */
   @Get('admin/all')
   @Auth(Role.ADMIN)
