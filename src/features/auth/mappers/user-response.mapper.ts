@@ -6,6 +6,7 @@ export const toUserResponse = (user: User) => ({
   fullName: user.fullName,
   role: user.role,
   isActive: user.isActive,
+  emailVerified: user.emailVerified,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });

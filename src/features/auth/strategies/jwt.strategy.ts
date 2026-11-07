@@ -35,6 +35,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException(
         'Tu cuenta está inactiva. Hablá con un administrador',
       );
+    // Revocación de sesiones sin tabla de sesiones: un reset/cambio de contraseña incrementa
+    // `sessionVersion`, lo que invalida instantáneamente todo JWT emitido antes de ese momento.
+    if (payload.sessionVersion !== user.sessionVersion)
+      throw new UnauthorizedException('Tu sesión ya no es válida. Iniciá sesión de nuevo.');
 
     return user;
   }

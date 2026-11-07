@@ -8,6 +8,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import accountSecurityConfig from './config/account-security.config';
 import authConfig from './config/auth.config';
 import cloudinaryConfig from './config/cloudinary.config';
 import { envValidationSchema } from './config/env.validation';
@@ -15,6 +16,7 @@ import legalConfig from './config/legal.config';
 import openrouterConfig from './config/openrouter.config';
 import resendConfig from './config/resend.config';
 import securityConfig from './config/security.config';
+import { AccountSecurityModule } from './features/account-security/account-security.module';
 import { AuthModule } from './features/auth/auth.module';
 import { CartModule } from './features/cart/cart.module';
 import { ContactModule } from './features/contact/contact.module';
@@ -30,7 +32,15 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [cloudinaryConfig, authConfig, openrouterConfig, legalConfig, resendConfig, securityConfig],
+      load: [
+        cloudinaryConfig,
+        authConfig,
+        openrouterConfig,
+        legalConfig,
+        resendConfig,
+        securityConfig,
+        accountSecurityConfig,
+      ],
       validationSchema: envValidationSchema,
     }),
     TypeOrmModule.forRoot({
@@ -54,6 +64,7 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
       }),
     }),
     SecurityModule,
+    AccountSecurityModule,
     HealthModule,
     AuthModule,
     ProductsModule,

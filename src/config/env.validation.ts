@@ -89,4 +89,33 @@ export const envValidationSchema = Joi.object({
   ABUSE_BLOCK_MAX_MS: Joi.number().integer().positive().default(86_400_000),
 
   SECURITY_LOGGING_ENABLED: Joi.boolean().default(true),
+
+  // --- Verificación de email / recuperación y cambio de contraseña (ver ACCOUNT_SECURITY.md) ---
+
+  // Dominio del frontend para construir los links de los emails (verificación de correo).
+  // HTTPS en producción - en dev puede quedar en localhost:4200.
+  FRONTEND_URL: Joi.string().uri().default('https://www.essencevapes.com.ar'),
+
+  // Secreto propio para el HMAC de tokens/códigos de seguridad - nunca el mismo que JWT_SECRET
+  // (rotación independiente). Requerido como JWT_SECRET, mismo criterio de longitud mínima.
+  SECURITY_CHALLENGE_SECRET: Joi.string().min(16).required(),
+
+  EMAIL_VERIFICATION_TOKEN_TTL_MS: Joi.number().integer().positive().default(86_400_000),
+  EMAIL_VERIFICATION_RESEND_COOLDOWN_MS: Joi.number().integer().positive().default(60_000),
+  EMAIL_VERIFICATION_RESEND_HOURLY_MAX: Joi.number().integer().positive().default(5),
+
+  PASSWORD_RESET_CODE_TTL_MS: Joi.number().integer().positive().default(600_000),
+  PASSWORD_RESET_REQUEST_COOLDOWN_MS: Joi.number().integer().positive().default(60_000),
+  PASSWORD_RESET_REQUEST_HOURLY_MAX: Joi.number().integer().positive().default(5),
+
+  PASSWORD_CHANGE_CODE_TTL_MS: Joi.number().integer().positive().default(600_000),
+  PASSWORD_CHANGE_REQUEST_COOLDOWN_MS: Joi.number().integer().positive().default(60_000),
+  PASSWORD_CHANGE_REQUEST_HOURLY_MAX: Joi.number().integer().positive().default(5),
+
+  SECURITY_AUTHORIZATION_TTL_MS: Joi.number().integer().positive().default(300_000),
+  SECURITY_CHALLENGE_MAX_ATTEMPTS: Joi.number().integer().positive().default(5),
+
+  // Chequeo opcional contra HaveIBeenPwned (sin API key, k-anonimato) - fail-open si falla.
+  PWNED_PASSWORD_CHECK_ENABLED: Joi.boolean().default(true),
+  PWNED_PASSWORD_CHECK_TIMEOUT_MS: Joi.number().integer().positive().default(2_000),
 });
