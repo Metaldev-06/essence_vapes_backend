@@ -257,6 +257,7 @@ export class ProductsService {
     );
   }
 
+  /** AND, no OR - un producto solo matchea si tiene TODOS los estilos seleccionados, no alguno. */
   private applyStylesFilter(
     qb: ReturnType<Repository<Product>['createQueryBuilder']>,
     styles: string[],
@@ -265,7 +266,7 @@ export class ProductsService {
       new Array(styles.length)
         .fill(null)
         .map((_, i) => `product.styles LIKE :style${i}`)
-        .join(' OR '),
+        .join(' AND '),
       Object.fromEntries(styles.map((style, i) => [`style${i}`, `%${style}%`])),
     );
   }
