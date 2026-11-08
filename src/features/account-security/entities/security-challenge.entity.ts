@@ -40,9 +40,9 @@ export class SecurityChallenge {
   @CreateDateColumn()
   createdAt!: Date;
 
-  @Column({ type: 'datetime' })
+  @Column({ type: Date })
   expiresAt!: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: Date, nullable: true })
   consumedAt!: Date | null;
 }

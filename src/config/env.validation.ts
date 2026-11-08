@@ -2,6 +2,17 @@ import * as Joi from 'joi';
 
 export const envValidationSchema = Joi.object({
   PORT: Joi.number().default(3000),
+
+  // Base de datos: sin DATABASE_URL, arranca con el archivo SQLite local de siempre (el caso
+  // normal para desarrollo). Con DATABASE_URL seteada (postgresql://...), usa Postgres en su
+  // lugar - mismo código, mismas entidades, ver app.module.ts. Esto permite apuntar el backend
+  // local a la base de Postgres de producción sin tocar una línea de código, solo esta env var.
+  DATABASE_URL: Joi.string().allow('').optional(),
+  // Dokploy/Postgres en Docker normalmente no exige TLS (ni para la conexión interna ni para
+  // la expuesta por el puerto externo) - por eso el default es false. Ponerlo en true solo si
+  // la instancia de Postgres específica lo requiere.
+  DATABASE_SSL: Joi.boolean().default(false),
+
   CLOUDINARY_CLOUD_NAME: Joi.string().required(),
   CLOUDINARY_API_KEY: Joi.string().required(),
   CLOUDINARY_API_SECRET: Joi.string().required(),

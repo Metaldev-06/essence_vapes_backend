@@ -2,7 +2,7 @@ import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -11,6 +11,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import accountSecurityConfig from './config/account-security.config';
 import authConfig from './config/auth.config';
 import cloudinaryConfig from './config/cloudinary.config';
+import databaseConfig from './config/database.config';
 import { envValidationSchema } from './config/env.validation';
 import legalConfig from './config/legal.config';
 import openrouterConfig from './config/openrouter.config';
@@ -34,6 +35,7 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
     ConfigModule.forRoot({
       isGlobal: true,
       load: [
+        databaseConfig,
         cloudinaryConfig,
         authConfig,
         openrouterConfig,
@@ -44,11 +46,12 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
       ],
       validationSchema: envValidationSchema,
     }),
-    TypeOrmModule.forRoot({
-      type: 'better-sqlite3',
-      database: 'essence-vapes.sqlite',
-      synchronize: true,
-      autoLoadEntities: true,
+    // Dialecto según DATABASE_URL - ver database.config.ts (sin ella: SQLite local; con ella:
+    // Postgres, típicamente producción).
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) =>
+        configService.get<TypeOrmModuleOptions>('database')!,
     }),
     // Un solo throttler nombrado "default" - cada ruta lo overridea con `@Throttle({default:{...}})`
     // cuando necesita un límite distinto al genérico (ver BACKEND_SECURITY.md).

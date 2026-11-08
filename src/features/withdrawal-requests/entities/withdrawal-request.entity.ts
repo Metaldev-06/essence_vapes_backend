@@ -51,6 +51,6 @@ export class WithdrawalRequest {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: Date, nullable: true })
   resolvedAt!: Date | null;
 }

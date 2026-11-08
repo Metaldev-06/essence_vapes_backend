@@ -43,10 +43,10 @@ export class User {
   @Column({ type: 'boolean', default: false })
   emailVerified!: boolean;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: Date, nullable: true })
   emailVerifiedAt!: Date | null;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: Date, nullable: true })
   passwordChangedAt!: Date | null;
 
   // Incrementar esto invalida instantáneamente todo JWT ya emitido (ver JwtStrategy.validate) -

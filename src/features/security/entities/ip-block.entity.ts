@@ -20,7 +20,7 @@ export class IpBlock {
   @Column({ type: 'int', default: 0 })
   strikeCount!: number;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: Date, nullable: true })
   blockedUntil!: Date | null;
 
   @UpdateDateColumn()

@@ -16,10 +16,10 @@ export class AccountLockout {
   @Column({ type: 'int', default: 0 })
   failedCount!: number;
 
-  @Column({ type: 'datetime' })
+  @Column({ type: Date })
   windowStartedAt!: Date;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: Date, nullable: true })
   lockedUntil!: Date | null;
 
   @Column({ type: 'int', default: 0 })

@@ -164,10 +164,10 @@ export class Product {
   @Column({ type: 'varchar', nullable: true })
   saleAuthorizationCode?: string | null;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: Date, nullable: true })
   saleAuthorizationValidFrom?: Date | null;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: Date, nullable: true })
   saleAuthorizationValidUntil?: Date | null;
 
   // Derivado automáticamente a `true` cuando category=vapes (ver ProductsService) - persistido
