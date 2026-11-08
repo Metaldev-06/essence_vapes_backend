@@ -29,6 +29,7 @@
     "@nestjs/platform-express": "^11.2.6",
     "@nestjs/throttler": "^6.7.1",
     "@nestjs/typeorm": "^12.0.1",
+    "@types/sanitize-html": "^2.16.2",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.11.1",
     "class-transformer": "^0.5.1",
@@ -43,6 +44,7 @@
     "reflect-metadata": "^0.2.2",
     "resend": "^6.37.0",
     "rxjs": "^7.8.2",
+    "sanitize-html": "^2.18.1",
     "streamifier": "^0.1.1",
     "typeorm": "^1.1.1"
   },
@@ -86,6 +88,9 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(sanitize-html|htmlparser2|domhandler|domutils|dom-serializer|domelementtype|entities|deepmerge)/)"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],

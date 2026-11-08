@@ -10,6 +10,9 @@ import { registerAs } from '@nestjs/config';
  */
 export default registerAs('resend', () => ({
   apiKey: process.env.RESEND_API_KEY,
+  // Secret del endpoint de webhooks (Resend Dashboard > Webhooks > signing secret) - distinto de
+  // RESEND_API_KEY, usado solo para verificar la firma Svix de `POST /messages/webhooks/resend`.
+  webhookSecret: process.env.RESEND_WEBHOOK_SECRET,
   fromNoReply: process.env.RESEND_FROM_NO_REPLY || 'no-reply@essencevapes.com.ar',
   fromContact: process.env.RESEND_FROM_CONTACT || 'contacto@essencevapes.com.ar',
   fromSales: process.env.RESEND_FROM_SALES || 'ventas@essencevapes.com.ar',

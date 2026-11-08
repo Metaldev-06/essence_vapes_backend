@@ -10,7 +10,11 @@ import securityConfig from './config/security.config';
 import { translateValidationErrors } from './common/i18n/validation-messages';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // `rawBody: true` expone `request.rawBody` (Buffer) además del body ya parseado - lo necesita
+  // `MessagesWebhookController` para verificar la firma Svix de Resend contra los bytes exactos
+  // recibidos (re-serializar el JSON ya parseado puede dar una firma distinta). No cambia cómo
+  // se parsea el body en el resto de las rutas.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   const PORT = process.env.PORT ?? 3000;
 
   // `registerAs` factories se pueden llamar directo (sin DI) acá - mismo valor que el resto

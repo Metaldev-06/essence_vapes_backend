@@ -54,6 +54,10 @@ export const envValidationSchema = Joi.object({
   // Resend (ver resend.config.ts). Sin RESEND_API_KEY seteada, EmailService no rompe nada -
   // solo loguea y no envía, igual que el resto de las integraciones opcionales de este proyecto.
   RESEND_API_KEY: Joi.string().allow('').optional(),
+  // Secret para verificar webhooks de Resend Inboxes (ver EMAIL_CRM.md) - sin esta, el centro de
+  // mensajes no rompe el arranque, pero el webhook de correos entrantes queda sin procesar
+  // (se loguea como error en cada intento, ver `MessagesWebhookController`).
+  RESEND_WEBHOOK_SECRET: Joi.string().allow('').optional(),
   RESEND_FROM_NO_REPLY: Joi.string().allow('').optional(),
   RESEND_FROM_CONTACT: Joi.string().allow('').optional(),
   RESEND_FROM_SALES: Joi.string().allow('').optional(),

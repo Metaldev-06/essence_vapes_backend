@@ -25,6 +25,7 @@ import { ContactModule } from './features/contact/contact.module';
 import { FavoritesModule } from './features/favorites/favorites.module';
 import { HealthModule } from './features/health/health.module';
 import { LegalInfoModule } from './features/legal-info/legal-info.module';
+import { MessagesModule } from './features/messages/messages.module';
 import { ProductsModule } from './features/products/products.module';
 import { IpBlockGuard } from './features/security/ip-block.guard';
 import { SecurityModule } from './features/security/security.module';
@@ -78,6 +79,7 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
     LegalInfoModule,
     WithdrawalRequestsModule,
     ContactModule,
+    MessagesModule,
   ],
   controllers: [AppController],
   providers: [
