@@ -15,9 +15,9 @@ import {
 } from 'class-validator';
 
 import { SortOrder } from '../../../common/enums/sort-order.enum';
+import { ALL_PRODUCT_STYLE_VALUES, ProductStyle } from '../constants/product-style.constants';
 import { Gender } from '../enums/gender.enum';
 import { ProductCategory } from '../enums/product-category.enum';
-import { ScentStyle } from '../enums/scent-style.enum';
 
 const SORTABLE_FIELDS = [
   'name',
@@ -80,8 +80,8 @@ export class ProductsQueryDto {
     typeof value === 'string' ? value.split(',').filter(Boolean) : value,
   )
   @IsArray()
-  @IsEnum(ScentStyle, { each: true })
-  styles?: ScentStyle[];
+  @IsIn(ALL_PRODUCT_STYLE_VALUES, { each: true })
+  styles?: ProductStyle[];
 
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)

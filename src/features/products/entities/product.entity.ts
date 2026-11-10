@@ -11,8 +11,8 @@ import { Gender } from '../enums/gender.enum';
 import { Longevity } from '../enums/longevity.enum';
 import { ProductCategory } from '../enums/product-category.enum';
 import { SaleAuthorizationStatus } from '../enums/sale-authorization-status.enum';
-import { ScentStyle } from '../enums/scent-style.enum';
 import { Sillage } from '../enums/sillage.enum';
+import type { ProductStyle } from '../constants/product-style.constants';
 import type { MediaAsset } from '../interfaces/media-asset.interface';
 import type {
   DayUsage,
@@ -61,7 +61,7 @@ export class Product {
   category!: ProductCategory;
 
   @Column({ type: 'simple-array', default: '' })
-  styles!: ScentStyle[];
+  styles!: ProductStyle[];
 
   @Column({ type: 'boolean', default: false })
   featured!: boolean;

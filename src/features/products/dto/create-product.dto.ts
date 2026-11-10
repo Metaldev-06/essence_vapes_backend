@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -17,12 +18,12 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+import { ALL_PRODUCT_STYLE_VALUES, ProductStyle } from '../constants/product-style.constants';
 import { FragranceConcentration } from '../enums/fragrance-concentration.enum';
 import { Gender } from '../enums/gender.enum';
 import { Longevity } from '../enums/longevity.enum';
 import { ProductCategory } from '../enums/product-category.enum';
 import { SaleAuthorizationStatus } from '../enums/sale-authorization-status.enum';
-import { ScentStyle } from '../enums/scent-style.enum';
 import { Sillage } from '../enums/sillage.enum';
 import { DayUsageDto } from './day-usage.dto';
 import { FragranceNotesDto } from './fragrance-notes.dto';
@@ -89,8 +90,8 @@ export class CreateProductDto {
 
   @IsArray()
   @ArrayMaxSize(10)
-  @IsEnum(ScentStyle, { each: true })
-  styles!: ScentStyle[];
+  @IsIn(ALL_PRODUCT_STYLE_VALUES, { each: true })
+  styles!: ProductStyle[];
 
   @IsOptional()
   @IsBoolean()
