@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -20,6 +21,7 @@ export class CreateAddressDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(30)
+  @Matches(/^[\d\s()+-]{6,30}$/, { message: 'Ingresá un teléfono válido' })
   phone!: string;
 
   @IsString()
@@ -51,6 +53,11 @@ export class CreateAddressDto {
   @IsNotEmpty()
   @MaxLength(10)
   postalCode!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  betweenStreets?: string;
 
   @IsOptional()
   @IsString()

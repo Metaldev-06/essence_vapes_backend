@@ -146,4 +146,19 @@ export const envValidationSchema = Joi.object({
   MERCADOPAGO_ENVIRONMENT: Joi.string().valid('sandbox', 'production').default('sandbox'),
   // Ventana de reserva de stock de una orden pending_payment antes de liberarse sola (ms).
   MERCADOPAGO_ORDER_EXPIRATION_MS: Joi.number().integer().positive().default(1_800_000),
+
+  // --- Envíos y retiro propio (ver shipping.config.ts) ---
+  // Default 'free': preserva el comportamiento actual (sin costo de envío) hasta que se
+  // configure una estrategia real a propósito.
+  SHIPPING_COST_MODE: Joi.string()
+    .valid('free', 'fixed', 'by_province', 'to_coordinate')
+    .default('free'),
+  SHIPPING_FIXED_COST_VALUE: Joi.number().integer().min(0).optional(),
+  // JSON `{ "Provincia": montoEntero, ... }` - interino hasta que exista una pantalla admin.
+  SHIPPING_PROVINCE_RATES_JSON: Joi.string().allow('').optional(),
+  // Datos reales del punto de retiro propio - sin setear, se muestra un placeholder explícito
+  // (nunca se inventa una dirección comercial).
+  PICKUP_POINT_ADDRESS: Joi.string().allow('').optional(),
+  PICKUP_POINT_HOURS: Joi.string().allow('').optional(),
+  PICKUP_POINT_NOTES: Joi.string().allow('').optional(),
 });

@@ -13,9 +13,11 @@ import { Order } from '../orders/entities/order.entity';
 import { PaymentStatus } from '../orders/enums/payment-status.enum';
 import { OrdersService } from '../orders/orders.service';
 import { ProcessPaymentDto } from './dto/process-payment.dto';
+import { QueryTransactionsDto } from './dto/query-transactions.dto';
 import { PaymentAttempt } from './entities/payment-attempt.entity';
 import { mapMercadoPagoStatus } from './helpers/mp-status-mapper.helper';
 import { splitFullName } from './helpers/split-full-name.helper';
+import { toTransactionResponse } from './mappers/transaction-response.mapper';
 import { MercadoPagoService, type MpOrderResponse } from './mercadopago.service';
 import {
   buildPaymentApprovedEmail,
@@ -57,6 +59,9 @@ export class PaymentsService {
       orderId: order.id,
       idempotencyKey,
       status: PaymentStatus.PENDING,
+      paymentMethodType: dto.paymentMethodType,
+      paymentMethodId: dto.paymentMethodId,
+      amountValue: order.totalValue,
     });
     await this.attemptsRepository.save(attempt);
 
@@ -73,11 +78,16 @@ export class PaymentsService {
             first_name: firstName || undefined,
             last_name: lastName || undefined,
             phone: order.buyerPhone ? { number: order.buyerPhone } : undefined,
-            address: {
-              zip_code: order.shippingAddress.postalCode,
-              street_name: order.shippingAddress.street,
-              street_number: order.shippingAddress.streetNumber,
-            },
+            // Solo hay dirección para envío a domicilio - un retiro en el local no tiene
+            // `shippingAddress` (ver `Order.shippingAddress`), así que simplemente se omite el
+            // campo (es opcional en la Orders API) en vez de mandar algo inventado.
+            address: order.shippingAddress
+              ? {
+                  zip_code: order.shippingAddress.postalCode,
+                  street_name: order.shippingAddress.street,
+                  street_number: order.shippingAddress.streetNumber,
+                }
+              : undefined,
             identification: dto.payer.identification,
           },
           // Mejora de tasa de aprobación (checklist de calidad oficial) - nunca se manda
@@ -128,6 +138,60 @@ export class PaymentsService {
    *  ver COMPLIANCE/tarea: el admin necesita poder ubicar la operación del lado de MP). */
   async getAttemptsForOrder(orderId: string): Promise<PaymentAttempt[]> {
     return this.attemptsRepository.find({ where: { orderId }, order: { createdAt: 'DESC' } });
+  }
+
+  /**
+   * Panel admin "Transacciones" (ver tarea, punto 6) - independiente de "Pedidos": lista todos
+   * los intentos de pago registrados por el sistema, sin asumir una relación uno a uno con una
+   * orden (una orden puede tener varios intentos). Solo muestra operaciones del ecommerce (los
+   * `PaymentAttempt` que ya genera este backend) - nunca todos los movimientos de la cuenta de
+   * Mercado Pago, que son un universo distinto (ver tarea: conciliación completa de cuenta queda
+   * para evaluar por separado, no implementada acá).
+   */
+  async findAllForAdmin(query: QueryTransactionsDto) {
+    const {
+      limit = 20,
+      offset = 0,
+      order = 'desc',
+      sort = 'createdAt',
+      status,
+      paymentMethodType,
+      orderId,
+      buyer,
+      dateFrom,
+      dateTo,
+    } = query;
+
+    let buyerOrderIds: string[] | null = null;
+    if (buyer) {
+      buyerOrderIds = await this.ordersService.findOrderIdsByBuyerText(buyer);
+      if (buyerOrderIds.length === 0) {
+        return { data: [], pagination: { total: 0, pages: 0, current: 1, limit, offset } };
+      }
+    }
+
+    const qb = this.attemptsRepository.createQueryBuilder('attempt');
+    if (status) qb.andWhere('attempt.status = :status', { status });
+    if (paymentMethodType) qb.andWhere('attempt.paymentMethodType = :paymentMethodType', { paymentMethodType });
+    if (orderId) qb.andWhere('attempt.orderId = :orderId', { orderId });
+    if (buyerOrderIds) qb.andWhere('attempt.orderId IN (:...buyerOrderIds)', { buyerOrderIds });
+    if (dateFrom) qb.andWhere('attempt.createdAt >= :dateFrom', { dateFrom: new Date(dateFrom) });
+    if (dateTo) qb.andWhere('attempt.createdAt <= :dateTo', { dateTo: new Date(dateTo) });
+
+    const [attempts, total] = await qb
+      .orderBy(`attempt.${sort}`, order === 'asc' ? 'ASC' : 'DESC')
+      .skip(offset)
+      .take(limit)
+      .getManyAndCount();
+
+    const orderIds = [...new Set(attempts.map((attempt) => attempt.orderId))];
+    const orders = await this.ordersService.getOrdersByIds(orderIds);
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+
+    return {
+      data: attempts.map((attempt) => toTransactionResponse(attempt, orderById.get(attempt.orderId))),
+      pagination: { total, pages: Math.ceil(total / limit), current: Math.floor(offset / limit) + 1, limit, offset },
+    };
   }
 
   /** Llamado por `PaymentsWebhookController` tras confirmar el recurso directo con Mercado Pago. */

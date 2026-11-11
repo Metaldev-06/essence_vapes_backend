@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 
 import { Role } from '../../common/enums/system-role.enum';
@@ -6,6 +6,7 @@ import { UserAwareThrottlerGuard } from '../../common/guards/user-aware-throttle
 import { Auth } from '../auth/decorators/auth.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { ProcessPaymentDto } from './dto/process-payment.dto';
+import { QueryTransactionsDto } from './dto/query-transactions.dto';
 import { PaymentsService } from './payments.service';
 
 @Controller('payments')
@@ -31,5 +32,12 @@ export class PaymentsController {
   @Auth(Role.ADMIN)
   getAttemptsForOrder(@Param('orderId') orderId: string) {
     return this.paymentsService.getAttemptsForOrder(orderId);
+  }
+
+  /** Panel admin "Transacciones" (ver tarea, punto 6) - sección independiente de "Pedidos". */
+  @Get('admin/transactions')
+  @Auth(Role.ADMIN)
+  findAllForAdmin(@Query() query: QueryTransactionsDto) {
+    return this.paymentsService.findAllForAdmin(query);
   }
 }

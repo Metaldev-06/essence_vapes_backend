@@ -26,7 +26,18 @@ export const toOrderResponse = (order: Order, items: OrderItem[]) => ({
   buyerName: order.buyerName,
   buyerEmail: order.buyerEmail,
   buyerPhone: order.buyerPhone ?? undefined,
-  shippingAddress: order.shippingAddress,
+  deliveryMethod: order.deliveryMethod,
+  shippingAddress: order.shippingAddress ?? undefined,
+  pickupDetails: order.pickupDetails ?? undefined,
+  logisticsStatus: order.logisticsStatus,
+  logisticsCompletedAt: order.logisticsCompletedAt ?? undefined,
+  shippingCostMode: order.shippingCostMode ?? undefined,
+  shippingCostValue: order.shippingCostValue ?? undefined,
+  // `null`/ausente = todavía no se conoce (envío "a coordinar" sin definir) - nunca mostrar como
+  // si fuera $0. El frontend debe distinguir esto de un envío gratuito real (`shippingCostMode:
+  // 'free'`).
+  shippingCost: order.shippingCostValue != null ? formatPrice(order.shippingCostValue) : undefined,
+  shippingCostPending: order.shippingCostValue == null && !order.pickupDetails,
   expiresAt: order.expiresAt ?? undefined,
   createdAt: order.createdAt,
   updatedAt: order.updatedAt,

@@ -35,6 +35,22 @@ export class PaymentAttempt {
   @Column({ type: 'varchar', nullable: true })
   mpPaymentId?: string | null;
 
+  // Tal como lo manda el Payment Brick (`credit_card`/`debit_card` + id del medio, ej. "visa") -
+  // usado por el panel admin ("Información del pago", ver tarea punto 5/6). Nunca el número de
+  // tarjeta ni datos sensibles, solo el identificador del medio de pago.
+  @Column({ type: 'varchar', nullable: true })
+  paymentMethodType?: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  paymentMethodId?: string | null;
+
+  // Snapshot del importe intentado en este intento puntual (nunca recalculado después) - lo usa
+  // el panel admin "Transacciones" (ver tarea, punto 6). Normalmente coincide con
+  // `order.totalValue` al momento del intento, pero no se lee de ahí después para no alterar el
+  // historial si el total de la orden cambiara más adelante (ej. al fijarse un costo de envío).
+  @Column({ type: 'int', nullable: true })
+  amountValue?: number | null;
+
   @Column({ type: 'varchar', default: PaymentStatus.PENDING })
   status!: PaymentStatus;
 

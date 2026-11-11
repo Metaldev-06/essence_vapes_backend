@@ -16,9 +16,35 @@ describe('CreateOrderDto (ValidationPipe real)', () => {
   const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
   const metadata: ArgumentMetadata = { type: 'body', metatype: CreateOrderDto, data: '' };
 
-  it('acepta un body válido (solo addressId + acceptTerms)', async () => {
+  it('acepta un body sin deliveryMethod (default home_delivery - compatibilidad)', async () => {
     const result = await pipe.transform({ addressId: 'addr-1', acceptTerms: true }, metadata);
     expect(result).toEqual({ addressId: 'addr-1', acceptTerms: true });
+  });
+
+  it('acepta un envío a domicilio explícito con addressId', async () => {
+    const result = await pipe.transform(
+      { deliveryMethod: 'home_delivery', addressId: 'addr-1', acceptTerms: true },
+      metadata,
+    );
+    expect(result).toEqual({ deliveryMethod: 'home_delivery', addressId: 'addr-1', acceptTerms: true });
+  });
+
+  it('acepta un retiro en el local válido (sin addressId, con contacto)', async () => {
+    const result = await pipe.transform(
+      {
+        deliveryMethod: 'pickup',
+        pickupContactName: 'Juan Pérez',
+        pickupPhone: '+54 9 11 1234-5678',
+        acceptTerms: true,
+      },
+      metadata,
+    );
+    expect(result).toEqual({
+      deliveryMethod: 'pickup',
+      pickupContactName: 'Juan Pérez',
+      pickupPhone: '+54 9 11 1234-5678',
+      acceptTerms: true,
+    });
   });
 
   it('rechaza un intento de mandar un total/precio - campo no declarado en el DTO', async () => {
@@ -33,9 +59,27 @@ describe('CreateOrderDto (ValidationPipe real)', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('rechaza sin addressId', async () => {
+  it('rechaza envío a domicilio sin addressId', async () => {
     await expect(pipe.transform({ acceptTerms: true }, metadata)).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+
+  it('rechaza retiro sin nombre de contacto', async () => {
+    await expect(
+      pipe.transform({ deliveryMethod: 'pickup', pickupPhone: '123', acceptTerms: true }, metadata),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rechaza retiro sin teléfono', async () => {
+    await expect(
+      pipe.transform({ deliveryMethod: 'pickup', pickupContactName: 'Juan', acceptTerms: true }, metadata),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rechaza un deliveryMethod inválido', async () => {
+    await expect(
+      pipe.transform({ deliveryMethod: 'teleport', addressId: 'addr-1', acceptTerms: true }, metadata),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

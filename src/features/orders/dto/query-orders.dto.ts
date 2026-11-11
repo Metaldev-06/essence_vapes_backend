@@ -2,6 +2,8 @@ import { Type } from 'class-transformer';
 import { IsDateString, IsEnum, IsIn, IsOptional, IsString, Max, Min } from 'class-validator';
 
 import { SortOrder } from '../../../common/enums/sort-order.enum';
+import { DeliveryMethod } from '../enums/delivery-method.enum';
+import { LogisticsStatus } from '../enums/logistics-status.enum';
 import { OrderStatus } from '../enums/order-status.enum';
 import { PaymentStatus } from '../enums/payment-status.enum';
 
@@ -34,6 +36,14 @@ export class QueryOrdersDto {
   @IsOptional()
   @IsEnum(PaymentStatus)
   paymentStatus?: PaymentStatus;
+
+  @IsOptional()
+  @IsEnum(DeliveryMethod)
+  deliveryMethod?: DeliveryMethod;
+
+  @IsOptional()
+  @IsEnum(LogisticsStatus)
+  logisticsStatus?: LogisticsStatus;
 
   /** Búsqueda exacta por email del comprador (snapshot, no join contra `User`). */
   @IsOptional()

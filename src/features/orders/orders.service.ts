@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 
 import { HandleDBExceptions } from '../../common/helpers/handleDBExeption.helper';
 import { LoggerHelper } from '../../common/helpers/logger.helper';
@@ -13,19 +13,40 @@ import { CartService } from '../cart/cart.service';
 import { CartItem } from '../cart/entities/cart-item.entity';
 import { Product } from '../products/entities/product.entity';
 import { ProductVariant } from '../products/entities/product-variant.entity';
+import { ProductCategory } from '../products/enums/product-category.enum';
+import { SaleAuthorizationStatus } from '../products/enums/sale-authorization-status.enum';
 import { BASE_VARIANT_ID } from '../products/mappers/product-response.mapper';
 import { User } from '../auth/entities/user.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
+import { UpdateLogisticsStatusDto } from './dto/update-logistics-status.dto';
+import { OrderAuditLog } from './entities/order-audit-log.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { Order } from './entities/order.entity';
+import { DeliveryMethod } from './enums/delivery-method.enum';
+import { LogisticsStatus } from './enums/logistics-status.enum';
 import { OrderStatus } from './enums/order-status.enum';
 import { PaymentStatus } from './enums/payment-status.enum';
+import { isValidLogisticsStatusForMethod } from './helpers/logistics-status.helper';
 import { deriveOrderStatus } from './helpers/order-status.helper';
 import { computeOrderTotals, type OrderableLine } from './helpers/order-totals.helper';
+import { resolveShippingCost, type ShippingCostConfig } from './helpers/shipping-cost.helper';
+import type { OrderPickupDetails } from './interfaces/order-pickup-details.interface';
 import type { OrderShippingAddress } from './interfaces/order-shipping-address.interface';
 import { toOrderResponse } from './mappers/order-response.mapper';
 import { buildOrderCreatedEmail } from './order-emails';
+import {
+  buildOrderDeliveredEmail,
+  buildOrderDispatchedEmail,
+  buildOrderInPreparationEmail,
+  buildOrderReadyForPickupEmail,
+} from './order-logistics-emails';
+
+/** Mismo shape que `AdminActor` de `features/messages` - quién hizo la acción administrativa. */
+export interface AdminActor {
+  readonly id: string;
+  readonly email: string;
+}
 
 @Injectable()
 export class OrdersService {
@@ -35,6 +56,7 @@ export class OrdersService {
     @InjectRepository(OrderItem) private readonly orderItemsRepository: Repository<OrderItem>,
     @InjectRepository(Address) private readonly addressesRepository: Repository<Address>,
     @InjectRepository(User) private readonly usersRepository: Repository<User>,
+    @InjectRepository(OrderAuditLog) private readonly auditLogsRepository: Repository<OrderAuditLog>,
     private readonly cartService: CartService,
     private readonly paginationService: PaginationService,
     private readonly emailService: EmailService,
@@ -48,14 +70,20 @@ export class OrdersService {
    * única transacción - si algo falla, nada queda a medio aplicar.
    */
   async createFromCart(userId: string, dto: CreateOrderDto) {
+    const deliveryMethod = dto.deliveryMethod ?? DeliveryMethod.HOME_DELIVERY;
+    const isPickup = deliveryMethod === DeliveryMethod.PICKUP;
+
     const [user, address, cartResult] = await Promise.all([
       this.usersRepository.findOne({ where: { id: userId } }),
-      this.addressesRepository.findOne({ where: { id: dto.addressId, userId } }),
+      isPickup
+        ? Promise.resolve(null)
+        // `addressId` validado como obligatorio por `CreateOrderDto` cuando no es retiro.
+        : this.addressesRepository.findOne({ where: { id: dto.addressId!, userId } }),
       this.cartService.validate(userId),
     ]);
 
     if (!user) throw new NotFoundException('No se encontró el usuario');
-    if (!address) {
+    if (!isPickup && !address) {
       throw new NotFoundException('No se encontró la dirección de envío seleccionada');
     }
 
@@ -64,6 +92,23 @@ export class OrdersService {
       throw new BadRequestException(
         'El carrito está vacío o ninguno de sus productos tiene stock disponible',
       );
+    }
+
+    // Mismo gate que ya filtra el catálogo público (`ProductsService`, flag
+    // `legal.vapesSaleEnforcementEnabled`), extendido acá para que también bloquee el pago -
+    // llegar con el producto ya en el carrito (link directo, carrito viejo) no debe alcanzar
+    // para esquivarlo.
+    if (this.configService.get<boolean>('legal.vapesSaleEnforcementEnabled')) {
+      const unauthorized = items.find(
+        (item) =>
+          item.product!.category === ProductCategory.VAPES &&
+          item.product!.saleAuthorizationStatus !== SaleAuthorizationStatus.AUTORIZADO,
+      );
+      if (unauthorized) {
+        throw new BadRequestException(
+          `"${unauthorized.product!.brand} ${unauthorized.product!.name}" todavía no tiene autorización de venta - quitalo del carrito para continuar con el resto de tu compra.`,
+        );
+      }
     }
 
     const lines: OrderableLine[] = items.map((item) => ({
@@ -76,20 +121,60 @@ export class OrdersService {
     }));
     const totals = computeOrderTotals(lines);
 
-    const shippingAddress: OrderShippingAddress = {
-      recipientName: address.recipientName,
-      phone: address.phone,
-      street: address.street,
-      streetNumber: address.streetNumber,
-      apartment: address.apartment,
-      city: address.city,
-      province: address.province,
-      postalCode: address.postalCode,
-      country: address.country,
-      notes: address.notes,
-    };
+    const shippingAddress: OrderShippingAddress | null = isPickup
+      ? null
+      : {
+          recipientName: address!.recipientName,
+          phone: address!.phone,
+          street: address!.street,
+          streetNumber: address!.streetNumber,
+          apartment: address!.apartment,
+          city: address!.city,
+          province: address!.province,
+          postalCode: address!.postalCode,
+          country: address!.country,
+          betweenStreets: address!.betweenStreets,
+          notes: address!.notes,
+        };
+
+    const pickupDetails: OrderPickupDetails | null = isPickup
+      ? {
+          contactName: dto.pickupContactName!.trim(),
+          phone: dto.pickupPhone!.trim(),
+          notes: dto.pickupNotes?.trim() || null,
+        }
+      : null;
+
+    // Retiro en el local nunca tiene costo de envío - ver `resolveShippingCost`. Para envío a
+    // domicilio, la estrategia vigente queda "congelada" en la orden (cambiar la config después
+    // nunca altera órdenes ya creadas). `shipping.config.ts` expone el campo como `costMode` (no
+    // `mode`) - se mapea acá para no acoplar el shape del `registerAs` al del helper.
+    const shippingSettings = this.configService.get<{
+      costMode: ShippingCostConfig['mode'];
+      fixedCostValue?: number;
+      provinceRates: Record<string, number>;
+    }>('shipping')!;
+    const shippingResolution = resolveShippingCost(
+      {
+        mode: shippingSettings.costMode,
+        fixedCostValue: shippingSettings.fixedCostValue,
+        provinceRates: shippingSettings.provinceRates,
+      },
+      deliveryMethod,
+      shippingAddress?.province,
+    );
+
+    // "Envío a coordinar" sin tarifa definida todavía: la orden existe y reserva stock, pero no
+    // es pagable hasta que un admin fije el costo y el comprador lo acepte (ver
+    // `getPayableOrderOrThrow`, que exige exactamente `PENDING_PAYMENT`).
+    const orderStatus = shippingResolution.requiresQuote
+      ? OrderStatus.AWAITING_SHIPPING_QUOTE
+      : OrderStatus.PENDING_PAYMENT;
 
     const expirationMs = this.configService.get<number>('mercadopago.orderExpirationMs')!;
+    // Sin cuenta regresiva mientras se espera una cotización - la demora es nuestra, no del
+    // comprador, no corresponde liberarle el stock por eso.
+    const expiresAt = orderStatus === OrderStatus.PENDING_PAYMENT ? new Date(Date.now() + expirationMs) : null;
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -130,17 +215,22 @@ export class OrdersService {
 
       const order = queryRunner.manager.create(Order, {
         userId,
-        status: OrderStatus.PENDING_PAYMENT,
+        status: orderStatus,
         paymentStatus: PaymentStatus.PENDING,
         subtotalValue: totals.subtotalValue,
-        totalValue: totals.totalValue,
+        totalValue: totals.subtotalValue + (shippingResolution.value ?? 0),
         currency: 'ARS',
         buyerName: user.fullName,
         buyerEmail: user.email,
-        buyerPhone: address.phone,
+        buyerPhone: isPickup ? pickupDetails!.phone : address!.phone,
+        deliveryMethod,
         shippingAddress,
+        pickupDetails,
+        shippingCostMode: shippingResolution.mode,
+        shippingCostValue: shippingResolution.value,
+        shippingCostAgreedAt: shippingResolution.requiresQuote ? null : new Date(),
         termsAcceptedAt: new Date(),
-        expiresAt: new Date(Date.now() + expirationMs),
+        expiresAt,
       });
       const savedOrder = await queryRunner.manager.save(order);
 
@@ -207,6 +297,8 @@ export class OrdersService {
       sort = 'createdAt',
       status,
       paymentStatus,
+      deliveryMethod,
+      logisticsStatus,
       buyerEmail,
       search,
       dateFrom,
@@ -216,6 +308,8 @@ export class OrdersService {
     const qb = this.ordersRepository.createQueryBuilder('order');
     if (status) qb.andWhere('order.status = :status', { status });
     if (paymentStatus) qb.andWhere('order.paymentStatus = :paymentStatus', { paymentStatus });
+    if (deliveryMethod) qb.andWhere('order.deliveryMethod = :deliveryMethod', { deliveryMethod });
+    if (logisticsStatus) qb.andWhere('order.logisticsStatus = :logisticsStatus', { logisticsStatus });
     if (buyerEmail) qb.andWhere('order.buyerEmail = :buyerEmail', { buyerEmail: buyerEmail.toLowerCase().trim() });
     if (dateFrom) qb.andWhere('order.createdAt >= :dateFrom', { dateFrom: new Date(dateFrom) });
     if (dateTo) qb.andWhere('order.createdAt <= :dateTo', { dateTo: new Date(dateTo) });
@@ -246,24 +340,156 @@ export class OrdersService {
   }
 
   /**
-   * Indicadores para el panel admin - deliberadamente nunca cuenta `pending_payment`/`processing`
-   * como facturación confirmada, solo `paymentStatus=approved` (ver pedido explícito de la tarea).
+   * Único punto que mueve `logisticsStatus` - siempre manual, desde el panel admin (ver tarea,
+   * punto 7). Nunca toca `status`/`paymentStatus`: una orden nunca se considera pagada por esto.
+   * Registra quién hizo el cambio y cuándo (`OrderAuditLog`, mismo patrón que `MessageAuditLog`).
+   */
+  async updateLogisticsStatus(
+    orderId: string,
+    dto: UpdateLogisticsStatusDto,
+    actor: AdminActor,
+  ) {
+    const order = await this.ordersRepository.findOne({ where: { id: orderId } });
+    if (!order) throw new NotFoundException(`No se encontró la orden con id "${orderId}"`);
+
+    if (!isValidLogisticsStatusForMethod(dto.logisticsStatus, order.deliveryMethod)) {
+      throw new BadRequestException(
+        `El estado "${dto.logisticsStatus}" no aplica a la modalidad "${order.deliveryMethod}"`,
+      );
+    }
+
+    const previousStatus = order.logisticsStatus;
+    const isTerminal =
+      dto.logisticsStatus === LogisticsStatus.DELIVERED || dto.logisticsStatus === LogisticsStatus.PICKED_UP;
+
+    order.logisticsStatus = dto.logisticsStatus;
+    // "Fecha de entrega o retiro" (ver tarea, punto 5) - se deriva del momento del cambio, nunca
+    // la tipea el admin. Si se corrige el estado hacia atrás, se limpia (ya no está entregado).
+    order.logisticsCompletedAt = isTerminal ? order.logisticsCompletedAt ?? new Date() : null;
+
+    const saved = await this.ordersRepository.save(order);
+
+    await this.auditLogsRepository.save(
+      this.auditLogsRepository.create({
+        adminId: actor.id,
+        adminEmail: actor.email,
+        action: 'update_logistics_status',
+        orderId,
+        detail: `${previousStatus} -> ${dto.logisticsStatus}`,
+      }),
+    );
+
+    if (previousStatus !== dto.logisticsStatus) {
+      void this.notifyLogisticsStatus(saved);
+    }
+
+    const items = await this.orderItemsRepository.find({ where: { orderId } });
+    return toOrderResponse(saved, items);
+  }
+
+  /**
+   * Solo 4 de los estados logísticos tienen un email propio (ver tarea, punto 9) - el resto
+   * (`pending_preparation`, `ready_to_ship`, `in_transit`, `delivery_issue`, `picked_up`) no
+   * dispara nada, para no inventar notificaciones que la tarea no pidió. Nunca se llama dos
+   * veces para el mismo cambio (el único call site ya filtra `previousStatus !== nextStatus`).
+   */
+  private async notifyLogisticsStatus(order: Order): Promise<void> {
+    const { sales } = this.emailService.addresses;
+    const frontendUrl = this.configService.get<string>('accountSecurity.frontendUrl')!;
+
+    const emailOptions = (() => {
+      switch (order.logisticsStatus) {
+        case LogisticsStatus.IN_PREPARATION:
+          return buildOrderInPreparationEmail(sales, order, frontendUrl);
+        case LogisticsStatus.READY_FOR_PICKUP:
+          return buildOrderReadyForPickupEmail(sales, order, frontendUrl);
+        case LogisticsStatus.DISPATCHED:
+          return buildOrderDispatchedEmail(sales, order, frontendUrl);
+        case LogisticsStatus.DELIVERED:
+          return buildOrderDeliveredEmail(sales, order, frontendUrl);
+        default:
+          return null;
+      }
+    })();
+    if (!emailOptions) return;
+
+    const sent = await this.emailService.send(emailOptions);
+    if (!sent) {
+      LoggerHelper(
+        `No se pudo enviar el email de estado logístico para la orden ${order.id}`,
+        'OrdersService',
+        true,
+      );
+    }
+  }
+
+  /** Historial de cambios de estado logístico de una orden - quién y cuándo (ver tarea, punto 11). */
+  async getAuditLogForOrder(orderId: string): Promise<OrderAuditLog[]> {
+    return this.auditLogsRepository.find({ where: { orderId }, order: { createdAt: 'DESC' } });
+  }
+
+  /**
+   * Indicadores para el panel admin (ver tarea, punto 10) - deliberadamente nunca cuenta
+   * `pending_payment`/`processing` como facturación confirmada, solo `paymentStatus=approved`.
+   * Los indicadores logísticos (preparación/envío/retiro/entrega) también exigen pago aprobado -
+   * no tiene sentido operar la logística de algo que todavía no se pagó.
    */
   async getStats() {
-    const [confirmedCount, confirmedRevenue, pendingCount, rejectedCount, totalCount] =
-      await Promise.all([
-        this.ordersRepository.count({ where: { paymentStatus: PaymentStatus.APPROVED } }),
-        this.ordersRepository
-          .createQueryBuilder('order')
-          .select('COALESCE(SUM(order.totalValue), 0)', 'sum')
-          .where('order.paymentStatus = :status', { status: PaymentStatus.APPROVED })
-          .getRawOne<{ sum: string }>(),
-        this.ordersRepository.count({
-          where: [{ status: OrderStatus.PENDING_PAYMENT }, { status: OrderStatus.PROCESSING }],
-        }),
-        this.ordersRepository.count({ where: { paymentStatus: PaymentStatus.REJECTED } }),
-        this.ordersRepository.count(),
-      ]);
+    const approved = { paymentStatus: PaymentStatus.APPROVED } as const;
+    const [
+      confirmedCount,
+      confirmedRevenue,
+      pendingCount,
+      rejectedCount,
+      totalCount,
+      pendingPreparationCount,
+      pendingShipmentCount,
+      readyForPickupCount,
+      deliveredCount,
+      refundedCount,
+      refundedAmount,
+    ] = await Promise.all([
+      this.ordersRepository.count({ where: approved }),
+      this.ordersRepository
+        .createQueryBuilder('order')
+        .select('COALESCE(SUM(order.totalValue), 0)', 'sum')
+        .where('order.paymentStatus = :status', { status: PaymentStatus.APPROVED })
+        .getRawOne<{ sum: string }>(),
+      this.ordersRepository.count({
+        where: [{ status: OrderStatus.PENDING_PAYMENT }, { status: OrderStatus.PROCESSING }],
+      }),
+      this.ordersRepository.count({ where: { paymentStatus: PaymentStatus.REJECTED } }),
+      this.ordersRepository.count(),
+      this.ordersRepository.count({
+        where: { ...approved, logisticsStatus: LogisticsStatus.PENDING_PREPARATION },
+      }),
+      this.ordersRepository.count({
+        where: {
+          ...approved,
+          deliveryMethod: DeliveryMethod.HOME_DELIVERY,
+          logisticsStatus: LogisticsStatus.READY_TO_SHIP,
+        },
+      }),
+      this.ordersRepository.count({
+        where: {
+          ...approved,
+          deliveryMethod: DeliveryMethod.PICKUP,
+          logisticsStatus: LogisticsStatus.READY_FOR_PICKUP,
+        },
+      }),
+      this.ordersRepository.count({
+        where: [
+          { ...approved, logisticsStatus: LogisticsStatus.DELIVERED },
+          { ...approved, logisticsStatus: LogisticsStatus.PICKED_UP },
+        ],
+      }),
+      this.ordersRepository.count({ where: { paymentStatus: PaymentStatus.REFUNDED } }),
+      this.ordersRepository
+        .createQueryBuilder('order')
+        .select('COALESCE(SUM(order.totalValue), 0)', 'sum')
+        .where('order.paymentStatus = :status', { status: PaymentStatus.REFUNDED })
+        .getRawOne<{ sum: string }>(),
+    ]);
 
     return {
       confirmedOrdersCount: confirmedCount,
@@ -271,6 +497,12 @@ export class OrdersService {
       pendingOrdersCount: pendingCount,
       rejectedPaymentsCount: rejectedCount,
       totalOrdersCount: totalCount,
+      pendingPreparationCount,
+      pendingShipmentCount,
+      readyForPickupCount,
+      deliveredCount,
+      refundedOrdersCount: refundedCount,
+      refundedAmountValue: Number(refundedAmount?.sum ?? 0),
     };
   }
 
@@ -313,6 +545,27 @@ export class OrdersService {
     if (!order) throw new NotFoundException(`No se encontró la orden con id "${orderId}"`);
     const items = await this.orderItemsRepository.find({ where: { orderId } });
     return { order, items };
+  }
+
+  /**
+   * Usado solo por `PaymentsService` para el panel admin "Transacciones" (ver tarea, punto 6) -
+   * no hay relación TypeORM entre `PaymentAttempt` y `Order` (mismo criterio sin-relaciones del
+   * resto del proyecto), así que ese filtro por cliente se resuelve acá y se le pasan los ids.
+   */
+  async findOrderIdsByBuyerText(text: string): Promise<string[]> {
+    const needle = `%${text.toLowerCase().trim()}%`;
+    const matches = await this.ordersRepository
+      .createQueryBuilder('order')
+      .select(['order.id'])
+      .where('LOWER(order.buyerEmail) LIKE :needle OR LOWER(order.buyerName) LIKE :needle', { needle })
+      .getMany();
+    return matches.map((order) => order.id);
+  }
+
+  /** Usado solo por `PaymentsService` para enriquecer "Transacciones" con datos del comprador. */
+  async getOrdersByIds(ids: string[]): Promise<Order[]> {
+    if (ids.length === 0) return [];
+    return this.ordersRepository.find({ where: { id: In(ids) } });
   }
 
   private async attachItems(orders: Order[]) {

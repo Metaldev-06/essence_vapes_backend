@@ -45,7 +45,14 @@ export class AddressesService {
       if (makeDefault) await repo.update({ userId }, { isDefault: false });
 
       return repo.save(
-        repo.create({ ...dto, userId, apartment: dto.apartment ?? null, notes: dto.notes ?? null, isDefault: makeDefault }),
+        repo.create({
+          ...dto,
+          userId,
+          apartment: dto.apartment ?? null,
+          betweenStreets: dto.betweenStreets ?? null,
+          notes: dto.notes ?? null,
+          isDefault: makeDefault,
+        }),
       );
     });
   }

@@ -19,6 +19,7 @@ import mercadopagoConfig from './config/mercadopago.config';
 import openrouterConfig from './config/openrouter.config';
 import resendConfig from './config/resend.config';
 import securityConfig from './config/security.config';
+import shippingConfig from './config/shipping.config';
 import { AccountSecurityModule } from './features/account-security/account-security.module';
 import { AddressesModule } from './features/addresses/addresses.module';
 import { AuthModule } from './features/auth/auth.module';
@@ -49,6 +50,7 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
         securityConfig,
         accountSecurityConfig,
         mercadopagoConfig,
+        shippingConfig,
       ],
       validationSchema: envValidationSchema,
     }),

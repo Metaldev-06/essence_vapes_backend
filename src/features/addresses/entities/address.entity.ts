@@ -45,7 +45,11 @@ export class Address {
   @Column({ type: 'varchar', default: 'Argentina' })
   country!: string;
 
-  /** Referencias de entrega ("entre calles", "timbre 3B", etc.) - opcional. */
+  /** "Entre calles" - distinto de `notes` (referencias generales para encontrar el domicilio). */
+  @Column({ type: 'varchar', nullable: true })
+  betweenStreets!: string | null;
+
+  /** Referencias adicionales de entrega ("timbre 3B", etc.) - opcional. */
   @Column({ type: 'varchar', nullable: true })
   notes!: string | null;
 

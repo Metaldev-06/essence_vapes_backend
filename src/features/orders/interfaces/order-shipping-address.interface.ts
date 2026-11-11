@@ -9,5 +9,7 @@ export interface OrderShippingAddress {
   province: string;
   postalCode: string;
   country: string;
+  /** "Entre calles" - distinto de `notes` (referencias generales para encontrar el domicilio). */
+  betweenStreets?: string | null;
   notes?: string | null;
 }

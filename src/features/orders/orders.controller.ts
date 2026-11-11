@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Body, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 
 import { Role } from '../../common/enums/system-role.enum';
@@ -7,6 +7,7 @@ import { Auth } from '../auth/decorators/auth.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
+import { UpdateLogisticsStatusDto } from './dto/update-logistics-status.dto';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
@@ -47,5 +48,22 @@ export class OrdersController {
   @Auth(Role.ADMIN)
   findOneForAdmin(@Param('id') id: string) {
     return this.ordersService.findOneForAdmin(id);
+  }
+
+  @Patch('admin/:id/logistics-status')
+  @Auth(Role.ADMIN)
+  updateLogisticsStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateLogisticsStatusDto,
+    @GetUser('id') adminId: string,
+    @GetUser('email') adminEmail: string,
+  ) {
+    return this.ordersService.updateLogisticsStatus(id, dto, { id: adminId, email: adminEmail });
+  }
+
+  @Get('admin/:id/audit-log')
+  @Auth(Role.ADMIN)
+  getAuditLog(@Param('id') id: string) {
+    return this.ordersService.getAuditLogForOrder(id);
   }
 }

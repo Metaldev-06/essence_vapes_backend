@@ -9,6 +9,7 @@ import { User } from '../auth/entities/user.entity';
 import { CartModule } from '../cart/cart.module';
 import { Product } from '../products/entities/product.entity';
 import { ProductVariant } from '../products/entities/product-variant.entity';
+import { OrderAuditLog } from './entities/order-audit-log.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { Order } from './entities/order.entity';
 import { OrdersExpirationService } from './orders-expiration.service';
@@ -17,7 +18,7 @@ import { OrdersService } from './orders.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, OrderItem, Address, User, Product, ProductVariant]),
+    TypeOrmModule.forFeature([Order, OrderItem, Address, User, Product, ProductVariant, OrderAuditLog]),
     AuthModule,
     CartModule,
     EmailModule,
