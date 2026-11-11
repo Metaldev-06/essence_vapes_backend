@@ -133,4 +133,17 @@ export const envValidationSchema = Joi.object({
   // Chequeo opcional contra HaveIBeenPwned (sin API key, k-anonimato) - fail-open si falla.
   PWNED_PASSWORD_CHECK_ENABLED: Joi.boolean().default(true),
   PWNED_PASSWORD_CHECK_TIMEOUT_MS: Joi.number().integer().positive().default(2_000),
+
+  // --- Mercado Pago (Checkout API / Orders, ver mercadopago.config.ts) ---
+  // Opcionales a nivel de arranque: sin setear, el backend sigue levantando igual (consistente
+  // con el resto de las integraciones opcionales de este proyecto) pero `POST /payments`
+  // responde 503 en vez de romper el arranque. Nunca loguear estos valores completos.
+  MERCADOPAGO_ACCESS_TOKEN: Joi.string().allow('').optional(),
+  MERCADOPAGO_PUBLIC_KEY: Joi.string().allow('').optional(),
+  // Firma secreta del panel de la app (Tus integraciones > Webhooks) - sin esta, el webhook
+  // real queda sin procesar (se loguea, no rompe nada) hasta que se configure.
+  MERCADOPAGO_WEBHOOK_SECRET: Joi.string().allow('').optional(),
+  MERCADOPAGO_ENVIRONMENT: Joi.string().valid('sandbox', 'production').default('sandbox'),
+  // Ventana de reserva de stock de una orden pending_payment antes de liberarse sola (ms).
+  MERCADOPAGO_ORDER_EXPIRATION_MS: Joi.number().integer().positive().default(1_800_000),
 });

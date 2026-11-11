@@ -15,5 +15,8 @@ import { CartItem } from './entities/cart-item.entity';
   ],
   controllers: [CartController],
   providers: [CartService],
+  // Exportado para que `OrdersModule` reutilice la misma revalidación de stock en vez de
+  // duplicarla (ver `OrdersService.createFromCart`).
+  exports: [CartService],
 })
 export class CartModule {}

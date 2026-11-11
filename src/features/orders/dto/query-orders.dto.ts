@@ -1,0 +1,56 @@
+import { Type } from 'class-transformer';
+import { IsDateString, IsEnum, IsIn, IsOptional, IsString, Max, Min } from 'class-validator';
+
+import { SortOrder } from '../../../common/enums/sort-order.enum';
+import { OrderStatus } from '../enums/order-status.enum';
+import { PaymentStatus } from '../enums/payment-status.enum';
+
+const SORTABLE_FIELDS = ['createdAt', 'updatedAt', 'totalValue', 'status', 'paymentStatus'] as const;
+
+export class QueryOrdersDto {
+  @IsOptional()
+  @Type(() => Number)
+  @Min(1)
+  @Max(100)
+  limit?: number = 20;
+
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  offset?: number = 0;
+
+  @IsOptional()
+  @IsIn([SortOrder.ASC, SortOrder.DESC])
+  order?: SortOrder.ASC | SortOrder.DESC = SortOrder.DESC;
+
+  @IsOptional()
+  @IsIn(SORTABLE_FIELDS)
+  sort?: string = 'createdAt';
+
+  @IsOptional()
+  @IsEnum(OrderStatus)
+  status?: OrderStatus;
+
+  @IsOptional()
+  @IsEnum(PaymentStatus)
+  paymentStatus?: PaymentStatus;
+
+  /** Búsqueda exacta por email del comprador (snapshot, no join contra `User`). */
+  @IsOptional()
+  @IsString()
+  buyerEmail?: string;
+
+  /** Panel admin: busca por id de orden (prefijo), nombre o email del comprador - OR entre los
+   *  tres, sin distinguir mayúsculas/minúsculas. Distinto de `buyerEmail` (match exacto). */
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
+}

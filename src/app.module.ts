@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 
@@ -14,6 +15,7 @@ import cloudinaryConfig from './config/cloudinary.config';
 import databaseConfig from './config/database.config';
 import { envValidationSchema } from './config/env.validation';
 import legalConfig from './config/legal.config';
+import mercadopagoConfig from './config/mercadopago.config';
 import openrouterConfig from './config/openrouter.config';
 import resendConfig from './config/resend.config';
 import securityConfig from './config/security.config';
@@ -26,6 +28,8 @@ import { FavoritesModule } from './features/favorites/favorites.module';
 import { HealthModule } from './features/health/health.module';
 import { LegalInfoModule } from './features/legal-info/legal-info.module';
 import { MessagesModule } from './features/messages/messages.module';
+import { OrdersModule } from './features/orders/orders.module';
+import { PaymentsModule } from './features/payments/payments.module';
 import { ProductsModule } from './features/products/products.module';
 import { IpBlockGuard } from './features/security/ip-block.guard';
 import { SecurityModule } from './features/security/security.module';
@@ -44,9 +48,13 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
         resendConfig,
         securityConfig,
         accountSecurityConfig,
+        mercadopagoConfig,
       ],
       validationSchema: envValidationSchema,
     }),
+    // Habilita `@Interval`/`@Cron` - usado por `OrdersExpirationService` para liberar stock
+    // reservado por órdenes `pending_payment` vencidas.
+    ScheduleModule.forRoot(),
     // Dialecto según DATABASE_URL - ver database.config.ts (sin ella: SQLite local; con ella:
     // Postgres, típicamente producción).
     TypeOrmModule.forRootAsync({
@@ -80,6 +88,8 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
     WithdrawalRequestsModule,
     ContactModule,
     MessagesModule,
+    OrdersModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [
