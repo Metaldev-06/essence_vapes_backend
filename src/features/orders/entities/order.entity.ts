@@ -20,10 +20,10 @@ import type { OrderShippingAddress } from '../interfaces/order-shipping-address.
  * un flujo de invitado que soportar acá.
  *
  * `subtotalValue` es siempre el total de líneas recalculado por el backend (nunca lo que mande
- * el frontend). `totalValue = subtotalValue + (shippingCostValue ?? 0)` - cuando el costo de
- * envío todavía no se conoce (`shippingCostValue = null`, envío "a coordinar"), `totalValue` NO
- * es el total final: la orden queda en `OrderStatus.AWAITING_SHIPPING_QUOTE`, que
- * `OrdersService.getPayableOrderOrThrow` nunca deja pagar.
+ * el frontend) y `totalValue` es siempre igual a `subtotalValue` - el envío NUNCA se cobra por
+ * Mercado Pago, se coordina y se cobra aparte por WhatsApp después de pagar. `shippingCostMode`/
+ * `shippingCostValue` son solo un snapshot informativo para el admin, nunca afectan el monto
+ * cobrado ni bloquean el pago.
  */
 @Entity({ name: 'orders' })
 export class Order {
@@ -93,8 +93,8 @@ export class Order {
   @Column({ type: 'int', nullable: true })
   shippingCostValue!: number | null;
 
-  // Cuándo se fijó/aceptó el costo de envío - solo relevante si la orden pasó por
-  // `AWAITING_SHIPPING_QUOTE` (ver tarea, punto 3: "aceptación del comprador" antes de cobrar).
+  // Cuándo se fijó/conoció el costo de envío (null = todavía "a coordinar") - dato informativo
+  // para el admin, nunca condiciona el pago del subtotal.
   @Column({ type: Date, nullable: true })
   shippingCostAgreedAt!: Date | null;
 

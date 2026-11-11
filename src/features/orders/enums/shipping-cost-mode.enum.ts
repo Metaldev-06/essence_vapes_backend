@@ -8,7 +8,7 @@ export enum ShippingCostMode {
   FREE = 'free',
   FIXED = 'fixed',
   BY_PROVINCE = 'by_province',
-  // Sin tarifa definida todavía - la orden queda en `OrderStatus.AWAITING_SHIPPING_QUOTE` hasta
-  // que un admin la fije y el comprador la acepte (ver `OrdersService.createFromCart`).
+  // Sin tarifa definida todavía - nunca bloquea el pago del subtotal: el costo se coordina y se
+  // cobra aparte por WhatsApp después (ver `OrdersService.createFromCart`).
   TO_COORDINATE = 'to_coordinate',
 }

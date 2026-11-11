@@ -148,7 +148,10 @@ export class OrdersService {
     // Retiro en el local nunca tiene costo de envío - ver `resolveShippingCost`. Para envío a
     // domicilio, la estrategia vigente queda "congelada" en la orden (cambiar la config después
     // nunca altera órdenes ya creadas). `shipping.config.ts` expone el campo como `costMode` (no
-    // `mode`) - se mapea acá para no acoplar el shape del `registerAs` al del helper.
+    // `mode`) - se mapea acá para no acoplar el shape del `registerAs` al del helper. El envío
+    // NUNCA se cobra por Mercado Pago: esta resolución es solo un dato informativo para el admin
+    // (`shippingCostMode`/`shippingCostValue` en la orden) - el costo real se coordina y se cobra
+    // aparte por WhatsApp después de pagar el subtotal, nunca bloquea el pago.
     const shippingSettings = this.configService.get<{
       costMode: ShippingCostConfig['mode'];
       fixedCostValue?: number;
@@ -164,17 +167,8 @@ export class OrdersService {
       shippingAddress?.province,
     );
 
-    // "Envío a coordinar" sin tarifa definida todavía: la orden existe y reserva stock, pero no
-    // es pagable hasta que un admin fije el costo y el comprador lo acepte (ver
-    // `getPayableOrderOrThrow`, que exige exactamente `PENDING_PAYMENT`).
-    const orderStatus = shippingResolution.requiresQuote
-      ? OrderStatus.AWAITING_SHIPPING_QUOTE
-      : OrderStatus.PENDING_PAYMENT;
-
     const expirationMs = this.configService.get<number>('mercadopago.orderExpirationMs')!;
-    // Sin cuenta regresiva mientras se espera una cotización - la demora es nuestra, no del
-    // comprador, no corresponde liberarle el stock por eso.
-    const expiresAt = orderStatus === OrderStatus.PENDING_PAYMENT ? new Date(Date.now() + expirationMs) : null;
+    const expiresAt = new Date(Date.now() + expirationMs);
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -215,10 +209,10 @@ export class OrdersService {
 
       const order = queryRunner.manager.create(Order, {
         userId,
-        status: orderStatus,
+        status: OrderStatus.PENDING_PAYMENT,
         paymentStatus: PaymentStatus.PENDING,
         subtotalValue: totals.subtotalValue,
-        totalValue: totals.subtotalValue + (shippingResolution.value ?? 0),
+        totalValue: totals.subtotalValue,
         currency: 'ARS',
         buyerName: user.fullName,
         buyerEmail: user.email,

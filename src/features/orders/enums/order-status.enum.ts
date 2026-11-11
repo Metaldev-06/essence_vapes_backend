@@ -5,12 +5,6 @@
  * mueve a este estado. Ver `helpers/mp-status-mapper.helper.ts` para la derivación.
  */
 export enum OrderStatus {
-  // Envío "a coordinar" sin tarifa definida todavía (ver `ShippingCostMode.TO_COORDINATE`) - la
-  // orden existe y reservó stock, pero nunca es pagable (`OrdersService.getPayableOrderOrThrow`
-  // exige exactamente `PENDING_PAYMENT`) hasta que un admin fije el costo y el comprador lo
-  // acepte. Nunca lo deriva `deriveOrderStatus` - lo decide `OrdersService.createFromCart` al
-  // crear la orden, no el estado del pago.
-  AWAITING_SHIPPING_QUOTE = 'awaiting_shipping_quote',
   PENDING_PAYMENT = 'pending_payment',
   PROCESSING = 'processing',
   PAID = 'paid',

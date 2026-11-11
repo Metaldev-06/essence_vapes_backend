@@ -37,6 +37,8 @@ export const toOrderResponse = (order: Order, items: OrderItem[]) => ({
   // si fuera $0. El frontend debe distinguir esto de un envío gratuito real (`shippingCostMode:
   // 'free'`).
   shippingCost: order.shippingCostValue != null ? formatPrice(order.shippingCostValue) : undefined,
+  // Solo informativo (no bloquea el pago, que siempre es por `subtotalValue`): `true` cuando
+  // todavía no hay tarifa sugerida y corresponde coordinarla por WhatsApp después de pagar.
   shippingCostPending: order.shippingCostValue == null && !order.pickupDetails,
   expiresAt: order.expiresAt ?? undefined,
   createdAt: order.createdAt,
