@@ -26,7 +26,9 @@ import { slugify } from './helpers/slugify.helper';
 import {
   BASE_VARIANT_ID,
   flattenProductVariant,
+  ProductCardResponse,
   ProductResponse,
+  toProductCardResponse,
   toProductResponse,
 } from './mappers/product-response.mapper';
 
@@ -323,21 +325,55 @@ export class ProductsService {
 
   /**
    * "Featured" now lives per-row (base product OR individual variant), not only on the product -
-   * marking a product doesn't drag every one of its variants along. This fetches every product
-   * that *could* contribute a featured row (itself, or via one of its variants), explodes them
-   * all the usual way, then keeps only the rows that actually are featured.
+   * marking a product doesn't drag every one of its variants along. Only 2 queries: the featured
+   * variant rows themselves (never ALL of a product's variants - a card never shows the other,
+   * non-featured sizes), then the matching products. Response uses `toProductCardResponse` (see
+   * its docblock) - the card never needs the fragrance/regulatory profile or `variants[]`, so
+   * neither is fetched nor sent here, unlike the full catalog's `findAll`/`findOne`.
    */
-  async findFeatured() {
-    const featuredVariantProductIds = (
-      await this.productVariantsRepository
-        .createQueryBuilder('variant')
-        .select('DISTINCT variant.productId', 'productId')
-        .where('variant.featured = :featured', { featured: true })
-        .getRawMany<{ productId: string }>()
-    ).map((row) => row.productId);
+  async findFeatured(): Promise<ProductCardResponse[]> {
+    const featuredVariants = await this.productVariantsRepository
+      .createQueryBuilder('variant')
+      .select([
+        'variant.id',
+        'variant.productId',
+        'variant.label',
+        'variant.priceValue',
+        'variant.stock',
+        'variant.images',
+        'variant.featured',
+      ])
+      .where('variant.featured = :featured', { featured: true })
+      .getMany();
+
+    const featuredVariantsByProductId = new Map<string, ProductVariant[]>();
+    for (const variant of featuredVariants) {
+      const list = featuredVariantsByProductId.get(variant.productId) ?? [];
+      list.push(variant);
+      featuredVariantsByProductId.set(variant.productId, list);
+    }
+    const featuredVariantProductIds = [...featuredVariantsByProductId.keys()];
 
     const qb = this.productsRepository
       .createQueryBuilder('product')
+      .select([
+        'product.id',
+        'product.brand',
+        'product.name',
+        'product.variantLabel',
+        'product.priceValue',
+        'product.oldPriceValue',
+        'product.accent',
+        'product.category',
+        'product.gender',
+        'product.images',
+        'product.stock',
+        'product.isActive',
+        'product.featured',
+        'product.saleAuthorizationStatus',
+        'product.requiresAgeVerification',
+        'product.createdAt',
+      ])
       .where('product.isActive = :isActive', { isActive: true })
       .andWhere(
         featuredVariantProductIds.length > 0
@@ -357,12 +393,14 @@ export class ProductsService {
       );
     }
 
-    const variantsByProductId = await this.loadVariantsByProductId(
-      items.map((item) => item.id),
-    );
-    return this.explodeProducts(items, variantsByProductId).filter(
-      (row) => row.featured,
-    );
+    return items.flatMap((product) => {
+      const rows: ProductCardResponse[] = [];
+      if (product.featured) rows.push(toProductCardResponse(product));
+      for (const variant of featuredVariantsByProductId.get(product.id) ?? []) {
+        rows.push(toProductCardResponse(product, variant));
+      }
+      return rows;
+    });
   }
 
   /**

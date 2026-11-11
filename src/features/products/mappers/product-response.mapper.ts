@@ -143,3 +143,47 @@ export const flattenProductVariant = (
       chosen.id === BASE_VARIANT_ID ? base.oldPriceValue : undefined,
   };
 };
+
+/**
+ * Minimal response for grid/card contexts (home "Más deseados", any future lightweight listing) -
+ * omits the full fragrance/regulatory profile (accords, fragranceNotes, mood, season/day usage,
+ * occasions, rating, regulatory/decant fields, etc.) and the nested `variants[]` (a card never
+ * shows a size-switcher, only the one row it already is) since `ProductCard`/the cart never read
+ * any of that. Still shape-compatible with `ProductResponse` - fields the frontend `Product` type
+ * requires but this context has no use for (`subtitle`/`notes`/`styles`/`videos`/`variants`) get a
+ * cheap empty default rather than a parallel "summary" type, so every existing consumer of
+ * `Product` keeps working unmodified.
+ */
+export const toProductCardResponse = (
+  product: Product,
+  variant?: ProductVariant,
+) => ({
+  id: product.id,
+  brand: product.brand,
+  name: product.name,
+  subtitle: '',
+  notes: [] as string[],
+  price: formatPrice(variant?.priceValue ?? product.priceValue),
+  priceValue: variant?.priceValue ?? product.priceValue,
+  oldPrice:
+    !variant && product.oldPriceValue != null
+      ? formatPrice(product.oldPriceValue)
+      : undefined,
+  oldPriceValue: !variant ? product.oldPriceValue ?? undefined : undefined,
+  accent: product.accent,
+  category: product.category,
+  styles: [] as string[],
+  featured: variant ? variant.featured : product.featured,
+  gender: product.gender ?? undefined,
+  images: (variant ? variant.images : product.images) ?? [],
+  videos: [] as MediaAsset[],
+  stock: variant?.stock ?? product.stock,
+  isActive: product.isActive,
+  saleAuthorizationStatus: product.saleAuthorizationStatus,
+  requiresAgeVerification: product.requiresAgeVerification,
+  variantId: variant?.id ?? BASE_VARIANT_ID,
+  variantLabel: variant?.label ?? product.variantLabel ?? null,
+  variants: [] as VariantSummary[],
+});
+
+export type ProductCardResponse = ReturnType<typeof toProductCardResponse>;
