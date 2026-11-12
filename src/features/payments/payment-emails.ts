@@ -3,6 +3,7 @@ import { buildAccountEmailHtml } from '../../common/services/email/account-email
 import type { SendEmailOptions } from '../../common/services/email/email.service';
 import { Order } from '../orders/entities/order.entity';
 import { formatPrice } from '../products/helpers/format-price.helper';
+import { statusDetailLabel } from './helpers/status-detail-label.helper';
 
 const orderUrl = (frontendUrl: string, orderId: string) =>
   `${frontendUrl}/cuenta/pedidos/${orderId}`;
@@ -43,7 +44,7 @@ export function buildPaymentRejectedEmail(
       heading: `Hola, ${escapeHtml(order.buyerName)}`,
       bodyHtml: `
         <p>No pudimos procesar el pago de tu pedido por <strong>${formatPrice(order.totalValue)}</strong>.
-        ${statusDetail ? `Motivo informado: ${escapeHtml(statusDetail)}.` : ''}</p>
+        ${statusDetailLabel(statusDetail) ? `${escapeHtml(statusDetailLabel(statusDetail)!)}` : ''}</p>
         <p>Tu pedido sigue reservado - podés reintentar el pago con otra tarjeta desde tu cuenta.</p>
       `,
       cta: { label: 'Reintentar pago', url: orderUrl(frontendUrl, order.id) },
