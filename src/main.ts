@@ -2,6 +2,7 @@ import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
+import compression from 'compression';
 import helmet from 'helmet';
 
 import { AppModule } from './app.module';
@@ -60,6 +61,10 @@ async function bootstrap() {
     res.setHeader('X-XSS-Protection', '1; mode=block');
     next();
   });
+  // Respuestas JSON del catálogo comprimidas (gzip/brotli vía negociación estándar de
+  // `Accept-Encoding`) - confirmado ausente en la auditoría de performance (2026-11-11), fix
+  // barato y sin riesgo.
+  app.use(compression());
   app.enableCors({ origin: security.corsAllowedOrigins, credentials: false });
   app.setGlobalPrefix('api/v1');
 

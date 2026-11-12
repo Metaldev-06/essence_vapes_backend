@@ -149,7 +149,7 @@ export class ProductsService {
       const variantsByProductId = await this.loadVariantsByProductId(
         products.map((product) => product.id),
       );
-      let rows = this.explodeProducts(products, variantsByProductId);
+      let rows = this.explodeProductsLean(products, variantsByProductId);
 
       if (minPrice !== undefined)
         rows = rows.filter((row) => row.priceValue >= minPrice);
@@ -273,11 +273,11 @@ export class ProductsService {
     );
   }
 
-  private sortRows(
-    rows: ProductResponse[],
+  private sortRows<T extends ProductResponse | ProductCardResponse>(
+    rows: T[],
     sort: string,
     order: 'asc' | 'desc',
-  ): ProductResponse[] {
+  ): T[] {
     const dir = order === 'desc' ? -1 : 1;
     return [...rows].sort((a, b) => {
       const av = (a as Record<string, unknown>)[sort];
@@ -320,6 +320,29 @@ export class ProductsService {
       return variantIds.map((variantId) =>
         flattenProductVariant(product, variants, variantId),
       );
+    });
+  }
+
+  /**
+   * Misma explosión "una fila por variante" que `explodeProducts`, pero con la respuesta liviana
+   * (`toProductCardResponse`) en vez del perfil completo - el catálogo público (`findAll`, lo que
+   * `ProductCard` renderiza) no lee fragranceNotes/accords/mood/regulatorios/`variants[]`, exacto
+   * mismo razonamiento que ya se aplicó a `findFeatured` (ver auditoría de performance,
+   * 2026-11-11 - Hallazgo #1 de `04-backend-performance.md`). `findAllForAdmin` sigue su propio
+   * camino (`queryProductsFlat`) y no se toca - el admin sí necesita el perfil completo.
+   */
+  private explodeProductsLean(
+    products: Product[],
+    variantsByProductId: Map<string, ProductVariant[]>,
+  ): ProductCardResponse[] {
+    return products.flatMap((product) => {
+      const variants = (variantsByProductId.get(product.id) ?? [])
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      return [
+        toProductCardResponse(product),
+        ...variants.map((variant) => toProductCardResponse(product, variant)),
+      ];
     });
   }
 
