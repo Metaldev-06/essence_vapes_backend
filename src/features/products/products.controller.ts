@@ -35,6 +35,7 @@ import {
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { AiLookupDto } from './dto/ai-lookup.dto';
 import { BulkUpdateProductsDto } from './dto/bulk-update-products.dto';
+import { CategoryQueryDto } from './dto/category-query.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateVariantDto } from './dto/create-variant.dto';
 import { ProductsQueryDto } from './dto/products-query.dto';
@@ -71,18 +72,19 @@ export class ProductsController {
     return this.productsService.findFeatured();
   }
 
-  /** Distinct ml capacities in the active catalog, for the storefront's capacity filter chips. */
+  /** Distinct capacities (ml o puffs según la categoría) en el catálogo activo, para los chips
+   *  del filtro de Capacidad del storefront. */
   @Get('capacities')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
-  findCapacities() {
-    return this.productsService.findCapacities();
+  findCapacities(@Query() query: CategoryQueryDto) {
+    return this.productsService.findCapacities(query.category);
   }
 
-  /** Distinct brand names in the active catalog, for the storefront's brand filter. */
+  /** Distinct brand names en el catálogo activo, para el filtro de Marca del storefront. */
   @Get('brands')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
-  findBrands() {
-    return this.productsService.findBrands();
+  findBrands(@Query() query: CategoryQueryDto) {
+    return this.productsService.findBrands(query.category);
   }
 
   /** Same shape as the public catalog, but also includes inactive products - admin only. */

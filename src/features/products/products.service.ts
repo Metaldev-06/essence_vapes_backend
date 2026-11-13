@@ -21,7 +21,8 @@ import { ProductVariant } from './entities/product-variant.entity';
 import { StockMovement } from './entities/stock-movement.entity';
 import { ProductCategory } from './enums/product-category.enum';
 import { SaleAuthorizationStatus } from './enums/sale-authorization-status.enum';
-import { parseCapacityMl } from './helpers/capacity.helper';
+import { parseCapacityMl, parsePuffCount } from './helpers/capacity.helper';
+import { brandCategoriesFor, capacityUnitFor } from './helpers/category-group.helper';
 import { matchesFileSignature } from './helpers/file-signature.helper';
 import { findRestrictedVapePhrase } from './helpers/vape-restricted-phrases.helper';
 import { slugify } from './helpers/slugify.helper';
@@ -447,13 +448,19 @@ export class ProductsService {
   }
 
   /**
-   * Distinct ml capacities available right now across the active catalog (base products' own
+   * Distinct capacities available right now across the active catalog (base products' own
    * `variantLabel` plus every `ProductVariant.label`), sorted ascending - lets the storefront
    * filter chips list exactly what's actually in stock-shape, instead of a hardcoded list.
+   *
+   * Sin `category`, mantiene el comportamiento histórico (ml en todo el catálogo activo - los
+   * vapes, que no tienen etiquetas "Xml", simplemente no aportan nada). Con `category`, se acota
+   * a esa categoría puntual (nunca mezcla ml de perfumes con ml de decants, por ejemplo - cada
+   * categoría tiene su propio rango de tamaños real) y usa la unidad que corresponda (ml o
+   * puffs, ver `capacityUnitFor`).
    */
-  async findCapacities(): Promise<number[]> {
+  async findCapacities(category?: ProductCategory): Promise<number[]> {
     const products = await this.productsRepository.find({
-      where: { isActive: true },
+      where: category ? { isActive: true, category } : { isActive: true },
       select: { id: true, variantLabel: true },
     });
     const variants = await this.productVariantsRepository.find({
@@ -465,19 +472,25 @@ export class ProductsService {
       ...products.map((product) => product.variantLabel),
       ...variants.map((variant) => variant.label),
     ];
+    const parse = category && capacityUnitFor(category) === 'puffs' ? parsePuffCount : parseCapacityMl;
     const capacities = new Set<number>();
     for (const label of labels) {
-      const capacity = parseCapacityMl(label);
+      const capacity = parse(label);
       if (capacity !== null) capacities.add(capacity);
     }
 
     return [...capacities].sort((a, b) => a - b);
   }
 
-  /** Distinct brand names across the active catalog, sorted alphabetically, for the storefront's brand filter. */
-  async findBrands(): Promise<string[]> {
+  /**
+   * Distinct brand names across the active catalog, sorted alphabetically, for the storefront's
+   * brand filter. Sin `category`, el universo completo (comportamiento histórico); con
+   * `category`, acotado a las marcas que realmente existen ahí - perfumes y decants comparten
+   * universo de marcas, vapes y esencias tienen cada uno el suyo (ver `brandCategoriesFor`).
+   */
+  async findBrands(category?: ProductCategory): Promise<string[]> {
     const products = await this.productsRepository.find({
-      where: { isActive: true },
+      where: category ? { isActive: true, category: In(brandCategoriesFor(category)) } : { isActive: true },
       select: { brand: true },
     });
     const brands = new Set(products.map((product) => product.brand));
