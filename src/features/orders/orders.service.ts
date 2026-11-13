@@ -388,13 +388,13 @@ export class OrdersService {
     if (maxAmount != null) qb.andWhere('order.totalValue <= :maxAmount', { maxAmount });
     if (paymentMethodType) {
       qb.andWhere(
-        'EXISTS (SELECT 1 FROM payment_attempts pa WHERE pa.orderId = order.id AND pa.status = :pmtApproved AND pa.paymentMethodType = :paymentMethodType)',
+        'EXISTS (SELECT 1 FROM "payment_attempts" "pa" WHERE "pa"."orderId" = CAST(order.id AS varchar) AND "pa"."status" = :pmtApproved AND "pa"."paymentMethodType" = :paymentMethodType)',
         { pmtApproved: PaymentStatus.APPROVED, paymentMethodType },
       );
     }
     if (search) {
       qb.andWhere(
-        '(order.id LIKE :search OR LOWER(order.buyerName) LIKE :search OR LOWER(order.buyerEmail) LIKE :search)',
+        '(CAST(order.id AS varchar) LIKE :search OR LOWER(order.buyerName) LIKE :search OR LOWER(order.buyerEmail) LIKE :search)',
         { search: `%${search.toLowerCase().trim()}%` },
       );
     }
@@ -628,31 +628,31 @@ export class OrdersService {
     }
     if (filters.paymentMethodType) {
       qb.andWhere(
-        'EXISTS (SELECT 1 FROM payment_attempts pa WHERE pa.orderId = order.id AND pa.status = :pmtApproved AND pa.paymentMethodType = :pmt)',
+        'EXISTS (SELECT 1 FROM "payment_attempts" "pa" WHERE "pa"."orderId" = CAST(order.id AS varchar) AND "pa"."status" = :pmtApproved AND "pa"."paymentMethodType" = :pmt)',
         { pmtApproved: PaymentStatus.APPROVED, pmt: filters.paymentMethodType },
       );
     }
     const itemConditions: string[] = [];
     const itemParams: Record<string, unknown> = {};
     if (filters.category) {
-      itemConditions.push('oi.categorySnapshot = :fCategory');
+      itemConditions.push('"oi"."categorySnapshot" = :fCategory');
       itemParams['fCategory'] = filters.category;
     }
     if (filters.productId) {
-      itemConditions.push('oi.productId = :fProductId');
+      itemConditions.push('"oi"."productId" = :fProductId');
       itemParams['fProductId'] = filters.productId;
     }
     if (filters.variantId) {
-      itemConditions.push('oi.variantId = :fVariantId');
+      itemConditions.push('"oi"."variantId" = :fVariantId');
       itemParams['fVariantId'] = filters.variantId;
     }
     if (filters.brand) {
-      itemConditions.push('oi.productId IN (SELECT id FROM products WHERE LOWER(brand) = :fBrand)');
+      itemConditions.push('"oi"."productId" IN (SELECT "id" FROM "products" WHERE LOWER("brand") = :fBrand)');
       itemParams['fBrand'] = filters.brand.toLowerCase();
     }
     if (itemConditions.length > 0) {
       qb.andWhere(
-        `EXISTS (SELECT 1 FROM order_items oi WHERE oi.orderId = order.id AND ${itemConditions.join(' AND ')})`,
+        `EXISTS (SELECT 1 FROM "order_items" "oi" WHERE "oi"."orderId" = CAST(order.id AS varchar) AND ${itemConditions.join(' AND ')})`,
         itemParams,
       );
     }
@@ -666,7 +666,7 @@ export class OrdersService {
     if (filters.productId) qb.andWhere('item.productId = :productId', { productId: filters.productId });
     if (filters.variantId) qb.andWhere('item.variantId = :variantId', { variantId: filters.variantId });
     if (filters.brand) {
-      qb.andWhere('item.productId IN (SELECT id FROM products WHERE LOWER(brand) = :brand)', {
+      qb.andWhere('item.productId IN (SELECT "id" FROM "products" WHERE LOWER("brand") = :brand)', {
         brand: filters.brand.toLowerCase(),
       });
     }
@@ -681,7 +681,7 @@ export class OrdersService {
     }
     if (filters.paymentMethodType) {
       qb.andWhere(
-        'EXISTS (SELECT 1 FROM payment_attempts pa WHERE pa.orderId = order.id AND pa.status = :pmtApproved AND pa.paymentMethodType = :pmt)',
+        'EXISTS (SELECT 1 FROM "payment_attempts" "pa" WHERE "pa"."orderId" = CAST(order.id AS varchar) AND "pa"."status" = :pmtApproved AND "pa"."paymentMethodType" = :pmt)',
         { pmtApproved: PaymentStatus.APPROVED, pmt: filters.paymentMethodType },
       );
     }
@@ -737,7 +737,7 @@ export class OrdersService {
 
     const unitsQb = this.orderItemsRepository
       .createQueryBuilder('item')
-      .innerJoin(Order, 'order', 'order.id = item.orderId')
+      .innerJoin(Order, 'order', 'CAST(order.id AS varchar) = item.orderId')
       .select('COALESCE(SUM(item.quantity), 0)', 'units')
       .where('order.paymentStatus = :confirmedStatus', { confirmedStatus })
       .andWhere('order.paidAt >= :from AND order.paidAt < :to', { from, to });
@@ -867,7 +867,7 @@ export class OrdersService {
     const confirmedStatus = filters.paymentStatus ?? PaymentStatus.APPROVED;
     const qb = this.orderItemsRepository
       .createQueryBuilder('item')
-      .innerJoin(Order, 'order', 'order.id = item.orderId')
+      .innerJoin(Order, 'order', 'CAST(order.id AS varchar) = item.orderId')
       .select('item.categorySnapshot', 'category')
       .addSelect('COALESCE(SUM(item.quantity), 0)', 'units')
       .addSelect('COALESCE(SUM(item.lineTotalValue), 0)', 'revenue')
@@ -906,7 +906,7 @@ export class OrdersService {
 
     const rowsQb = this.orderItemsRepository
       .createQueryBuilder('item')
-      .innerJoin(Order, 'order', 'order.id = item.orderId')
+      .innerJoin(Order, 'order', 'CAST(order.id AS varchar) = item.orderId')
       .select('item.productId', 'productId')
       .addSelect('item.variantId', 'variantId')
       .addSelect('item.productName', 'productName')
@@ -927,7 +927,7 @@ export class OrdersService {
 
     const totalQb = this.orderItemsRepository
       .createQueryBuilder('item')
-      .innerJoin(Order, 'order', 'order.id = item.orderId')
+      .innerJoin(Order, 'order', 'CAST(order.id AS varchar) = item.orderId')
       .select('COALESCE(SUM(item.lineTotalValue), 0)', 'revenue')
       .where('order.paymentStatus = :confirmedStatus', { confirmedStatus })
       .andWhere('order.paidAt >= :from AND order.paidAt < :to', { from, to });
