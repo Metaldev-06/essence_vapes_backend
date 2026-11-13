@@ -39,6 +39,13 @@ export class Order {
   @Column({ type: 'varchar', default: PaymentStatus.PENDING })
   paymentStatus!: PaymentStatus;
 
+  // Cuándo se confirmó el pago por primera vez (se setea una sola vez, al entrar a `PAID` - ver
+  // `OrdersService.applyPaymentResult`). Nunca se pisa después (un contracargo posterior no borra
+  // cuándo se cobró originalmente). Necesario para reportes de ventas por período: `updatedAt` no
+  // sirve para esto porque cualquier otro cambio (logística, auditoría) lo pisa.
+  @Column({ type: Date, nullable: true })
+  paidAt!: Date | null;
+
   @Column({ type: 'int' })
   subtotalValue!: number;
 
@@ -111,6 +118,12 @@ export class Order {
 
   @Column({ type: 'varchar', nullable: true })
   cancelledReason?: string | null;
+
+  // Notas internas del admin sobre este pedido (ver tarea, punto 7.4) - nunca visibles para el
+  // comprador, distintas de `shippingAddress.notes`/`pickupDetails.notes` (esas las escribe el
+  // cliente en el checkout).
+  @Column({ type: 'text', nullable: true })
+  internalNotes?: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

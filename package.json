@@ -42,13 +42,15 @@
     "joi": "^18.2.9",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
     "resend": "^6.37.0",
     "rxjs": "^7.8.2",
     "sanitize-html": "^2.18.1",
     "streamifier": "^0.1.1",
-    "typeorm": "^1.1.1"
+    "typeorm": "^1.1.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",
@@ -63,6 +65,7 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^26.6.2",
     "@types/passport-jwt": "^4.0.1",
+    "@types/pdfkit": "^0.17.7",
     "@types/streamifier": "^0.1.2",
     "@types/supertest": "^7.2.1",
     "eslint": "^10.11.0",

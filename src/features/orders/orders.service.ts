@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 
-import { DataSource, In, Repository } from 'typeorm';
+import { Between, DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 
 import { HandleDBExceptions } from '../../common/helpers/handleDBExeption.helper';
 import { LoggerHelper } from '../../common/helpers/logger.helper';
@@ -30,10 +30,11 @@ import { PaymentStatus } from './enums/payment-status.enum';
 import { isValidLogisticsStatusForMethod } from './helpers/logistics-status.helper';
 import { deriveOrderStatus } from './helpers/order-status.helper';
 import { computeOrderTotals, type OrderableLine } from './helpers/order-totals.helper';
+import { bucketStart, type SalesBucketGranularity } from './helpers/sales-bucket.helper';
 import { resolveShippingCost, type ShippingCostConfig } from './helpers/shipping-cost.helper';
 import type { OrderPickupDetails } from './interfaces/order-pickup-details.interface';
 import type { OrderShippingAddress } from './interfaces/order-shipping-address.interface';
-import { toOrderResponse } from './mappers/order-response.mapper';
+import { toAdminOrderResponse, toOrderResponse } from './mappers/order-response.mapper';
 import { buildOrderCreatedEmail } from './order-emails';
 import {
   buildOrderDeliveredEmail,
@@ -46,6 +47,70 @@ import {
 export interface AdminActor {
   readonly id: string;
   readonly email: string;
+}
+
+/** Ver `SalesReportFiltersDto` - mismo shape, ya validado/transformado por Nest antes de llegar
+ *  acá. Todos opcionales: sin ninguno, el comportamiento es el mismo que antes del reporte
+ *  (usado hoy por el dashboard de la Fase 3). */
+export interface SalesReportFilters {
+  readonly category?: string;
+  readonly brand?: string;
+  readonly productId?: string;
+  readonly variantId?: string;
+  readonly orderStatus?: OrderStatus;
+  readonly paymentStatus?: PaymentStatus;
+  readonly deliveryMethod?: DeliveryMethod;
+  readonly paymentMethodType?: string;
+  readonly buyer?: string;
+}
+
+export interface SalesSummary {
+  readonly ordersCount: number;
+  readonly grossOrdersValue: number;
+  readonly pendingOrdersCount: number;
+  readonly cancelledOrdersCount: number;
+  readonly paidOrdersCount: number;
+  readonly approvedPaymentsValue: number;
+  readonly averageTicketValue: number;
+  readonly unitsSoldCount: number;
+  readonly refundedOrdersCount: number;
+  readonly refundedAmountValue: number;
+}
+
+export interface SalesTimeseriesPoint {
+  readonly bucketStartUtc: string;
+  readonly ordersCount: number;
+  readonly grossValue: number;
+  readonly approvedValue: number;
+  readonly unitsSold: number;
+}
+
+export interface SalesByCategoryPoint {
+  readonly category: string;
+  readonly unitsSold: number;
+  readonly revenueValue: number;
+  readonly sharePercent: number;
+}
+
+export interface TopProductPoint {
+  readonly productId: string;
+  readonly variantId: string;
+  readonly productName: string;
+  readonly variantLabel: string | null;
+  readonly category: string | null;
+  readonly unitsSold: number;
+  readonly revenueValue: number;
+  readonly sharePercent: number;
+  readonly currentStock: number | null;
+  readonly imageUrl: string | null;
+  readonly brand: string | null;
+  // Rentabilidad (ver tarea, punto 4.3) - `null` mientras no se haya cargado `costValue` para
+  // este producto/variante, nunca un cálculo inventado a partir del precio de venta. Usa el
+  // costo ACTUAL (no un snapshot histórico): no existe un costo-al-momento-de-la-venta guardado,
+  // así que el margen de ventas viejas se recalcula con el costo vigente hoy - limitación
+  // documentada, no un dato falso.
+  readonly marginValue: number | null;
+  readonly marginPercent: number | null;
 }
 
 @Injectable()
@@ -115,6 +180,7 @@ export class OrdersService {
       productId: item.productId,
       variantId: item.variantId,
       productName: `${item.product!.brand} ${item.product!.name}`,
+      category: item.product!.category,
       variantLabel: item.product!.variantLabel,
       unitPriceValue: item.product!.priceValue,
       quantity: item.quantity,
@@ -176,34 +242,41 @@ export class OrdersService {
     try {
       // Reserva de stock: decrementa ya (no al confirmar el pago) para que dos compradores no
       // puedan "ganar" la misma unidad mientras uno de los dos todavía está completando el pago.
-      // Lectura-y-escritura dentro de la misma transacción, sin lock explícito - mismo nivel de
-      // garantía que el resto de los chequeos de stock de este proyecto (`CartService.setItem`),
-      // no un sistema de reservas con locks distribuidos.
+      // UPDATE atómico condicionado por el propio WHERE (`stock >= :qty`) en vez de
+      // leer-luego-escribir: la resta y el chequeo de "alcanza el stock" pasan en la MISMA
+      // sentencia SQL, así que dos transacciones concurrentes sobre el mismo producto nunca
+      // pueden leer el mismo stock "viejo" y pisarse entre sí (ni Postgres en producción ni
+      // SQLite en desarrollo permiten que dos UPDATEs a la misma fila se intercalen a mitad de
+      // camino). `affected === 0` significa que no alcanzaba el stock (o el producto no existe).
       for (const line of totals.lines) {
         if (line.variantId === BASE_VARIANT_ID) {
-          const product = await queryRunner.manager.findOne(Product, {
-            where: { id: line.productId },
-          });
-          if (!product || product.stock < line.quantity) {
+          const result = await queryRunner.manager
+            .createQueryBuilder()
+            .update(Product)
+            .set({ stock: () => 'stock - :qty' })
+            .where('id = :id AND stock >= :qty', { id: line.productId, qty: line.quantity })
+            .execute();
+          if (!result.affected) {
             throw new BadRequestException(
               `Ya no hay stock suficiente de "${line.productName}"`,
             );
           }
-          await queryRunner.manager.update(Product, line.productId, {
-            stock: product.stock - line.quantity,
-          });
         } else {
-          const variant = await queryRunner.manager.findOne(ProductVariant, {
-            where: { id: line.variantId, productId: line.productId },
-          });
-          if (!variant || variant.stock < line.quantity) {
+          const result = await queryRunner.manager
+            .createQueryBuilder()
+            .update(ProductVariant)
+            .set({ stock: () => 'stock - :qty' })
+            .where('id = :id AND productId = :productId AND stock >= :qty', {
+              id: line.variantId,
+              productId: line.productId,
+              qty: line.quantity,
+            })
+            .execute();
+          if (!result.affected) {
             throw new BadRequestException(
               `Ya no hay stock suficiente de "${line.productName}"`,
             );
           }
-          await queryRunner.manager.update(ProductVariant, variant.id, {
-            stock: variant.stock - line.quantity,
-          });
         }
       }
 
@@ -234,6 +307,7 @@ export class OrdersService {
           productId: line.productId,
           variantId: line.variantId,
           productName: line.productName,
+          categorySnapshot: line.category ?? null,
           variantLabel: line.variantLabel,
           unitPriceValue: line.unitPriceValue,
           quantity: line.quantity,
@@ -297,6 +371,9 @@ export class OrdersService {
       search,
       dateFrom,
       dateTo,
+      minAmount,
+      maxAmount,
+      paymentMethodType,
     } = query;
 
     const qb = this.ordersRepository.createQueryBuilder('order');
@@ -307,6 +384,14 @@ export class OrdersService {
     if (buyerEmail) qb.andWhere('order.buyerEmail = :buyerEmail', { buyerEmail: buyerEmail.toLowerCase().trim() });
     if (dateFrom) qb.andWhere('order.createdAt >= :dateFrom', { dateFrom: new Date(dateFrom) });
     if (dateTo) qb.andWhere('order.createdAt <= :dateTo', { dateTo: new Date(dateTo) });
+    if (minAmount != null) qb.andWhere('order.totalValue >= :minAmount', { minAmount });
+    if (maxAmount != null) qb.andWhere('order.totalValue <= :maxAmount', { maxAmount });
+    if (paymentMethodType) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM payment_attempts pa WHERE pa.orderId = order.id AND pa.status = :pmtApproved AND pa.paymentMethodType = :paymentMethodType)',
+        { pmtApproved: PaymentStatus.APPROVED, paymentMethodType },
+      );
+    }
     if (search) {
       qb.andWhere(
         '(order.id LIKE :search OR LOWER(order.buyerName) LIKE :search OR LOWER(order.buyerEmail) LIKE :search)',
@@ -330,7 +415,30 @@ export class OrdersService {
     const order = await this.ordersRepository.findOne({ where: { id } });
     if (!order) throw new NotFoundException(`No se encontró la orden con id "${id}"`);
     const items = await this.orderItemsRepository.find({ where: { orderId: id } });
-    return toOrderResponse(order, items);
+    return toAdminOrderResponse(order, items);
+  }
+
+  /** Notas internas del admin sobre el pedido (ver tarea, punto 7.4) - nunca visibles para el
+   *  comprador. Registra el cambio en la auditoría, mismo patrón que `updateLogisticsStatus`. */
+  async updateInternalNotes(orderId: string, notes: string, actor: AdminActor) {
+    const order = await this.ordersRepository.findOne({ where: { id: orderId } });
+    if (!order) throw new NotFoundException(`No se encontró la orden con id "${orderId}"`);
+
+    order.internalNotes = notes.trim() || null;
+    const saved = await this.ordersRepository.save(order);
+
+    await this.auditLogsRepository.save(
+      this.auditLogsRepository.create({
+        adminId: actor.id,
+        adminEmail: actor.email,
+        action: 'update_internal_notes',
+        orderId,
+        detail: order.internalNotes ? 'Nota interna actualizada' : 'Nota interna eliminada',
+      }),
+    );
+
+    const items = await this.orderItemsRepository.find({ where: { orderId } });
+    return toAdminOrderResponse(saved, items);
   }
 
   /**
@@ -378,7 +486,7 @@ export class OrdersService {
     }
 
     const items = await this.orderItemsRepository.find({ where: { orderId } });
-    return toOrderResponse(saved, items);
+    return toAdminOrderResponse(saved, items);
   }
 
   /**
@@ -500,6 +608,386 @@ export class OrdersService {
     };
   }
 
+  /**
+   * Condiciones opcionales de `SalesReportFiltersDto` aplicables a nivel de PEDIDO (alias
+   * `order` ya agregado al query) - estado del pedido, entrega, comprador y, cuando el reporte
+   * los pasa explícitamente, estado de pago y medio de pago (join contra `payment_attempts`,
+   * ya que el medio de pago vive en el intento, no en la orden). Cuando el reporte filtra por
+   * categoría/marca/producto/variante, restringe a pedidos que tengan AL MENOS una línea que
+   * matchee (vía `EXISTS`, para no duplicar filas de pedidos con varias líneas del mismo filtro).
+   */
+  private applyOrderLevelFilters(qb: SelectQueryBuilder<Order>, filters: SalesReportFilters): void {
+    if (filters.orderStatus) qb.andWhere('order.status = :orderStatus', { orderStatus: filters.orderStatus });
+    if (filters.deliveryMethod) {
+      qb.andWhere('order.deliveryMethod = :deliveryMethod', { deliveryMethod: filters.deliveryMethod });
+    }
+    if (filters.buyer) {
+      qb.andWhere('(LOWER(order.buyerName) LIKE :buyer OR LOWER(order.buyerEmail) LIKE :buyer)', {
+        buyer: `%${filters.buyer.toLowerCase()}%`,
+      });
+    }
+    if (filters.paymentMethodType) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM payment_attempts pa WHERE pa.orderId = order.id AND pa.status = :pmtApproved AND pa.paymentMethodType = :pmt)',
+        { pmtApproved: PaymentStatus.APPROVED, pmt: filters.paymentMethodType },
+      );
+    }
+    const itemConditions: string[] = [];
+    const itemParams: Record<string, unknown> = {};
+    if (filters.category) {
+      itemConditions.push('oi.categorySnapshot = :fCategory');
+      itemParams['fCategory'] = filters.category;
+    }
+    if (filters.productId) {
+      itemConditions.push('oi.productId = :fProductId');
+      itemParams['fProductId'] = filters.productId;
+    }
+    if (filters.variantId) {
+      itemConditions.push('oi.variantId = :fVariantId');
+      itemParams['fVariantId'] = filters.variantId;
+    }
+    if (filters.brand) {
+      itemConditions.push('oi.productId IN (SELECT id FROM products WHERE LOWER(brand) = :fBrand)');
+      itemParams['fBrand'] = filters.brand.toLowerCase();
+    }
+    if (itemConditions.length > 0) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM order_items oi WHERE oi.orderId = order.id AND ${itemConditions.join(' AND ')})`,
+        itemParams,
+      );
+    }
+  }
+
+  /** Mismos filtros de categoría/marca/producto/variante que `applyOrderLevelFilters`, pero
+   *  aplicados directo sobre el alias `item` (ya unido a `order`) en vez de un `EXISTS` -
+   *  usado por las consultas que YA agrupan por línea (`getSalesByCategory`/`getTopProducts`). */
+  private applyItemLevelFilters(qb: SelectQueryBuilder<OrderItem>, filters: SalesReportFilters): void {
+    if (filters.category) qb.andWhere('item.categorySnapshot = :category', { category: filters.category });
+    if (filters.productId) qb.andWhere('item.productId = :productId', { productId: filters.productId });
+    if (filters.variantId) qb.andWhere('item.variantId = :variantId', { variantId: filters.variantId });
+    if (filters.brand) {
+      qb.andWhere('item.productId IN (SELECT id FROM products WHERE LOWER(brand) = :brand)', {
+        brand: filters.brand.toLowerCase(),
+      });
+    }
+    if (filters.orderStatus) qb.andWhere('order.status = :orderStatus', { orderStatus: filters.orderStatus });
+    if (filters.deliveryMethod) {
+      qb.andWhere('order.deliveryMethod = :deliveryMethod', { deliveryMethod: filters.deliveryMethod });
+    }
+    if (filters.buyer) {
+      qb.andWhere('(LOWER(order.buyerName) LIKE :buyer OR LOWER(order.buyerEmail) LIKE :buyer)', {
+        buyer: `%${filters.buyer.toLowerCase()}%`,
+      });
+    }
+    if (filters.paymentMethodType) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM payment_attempts pa WHERE pa.orderId = order.id AND pa.status = :pmtApproved AND pa.paymentMethodType = :pmt)',
+        { pmtApproved: PaymentStatus.APPROVED, pmt: filters.paymentMethodType },
+      );
+    }
+  }
+
+  /**
+   * Resumen comercial de UN período - usado por el dashboard (ver tarea, punto 3.2) y por el
+   * reporte de ventas filtrable (punto 4.1), que reutiliza el mismo método en vez de duplicar la
+   * agregación. Distingue a propósito tres fechas: `createdAt` (pedido recibido, haya terminado
+   * pagándose o no), `paidAt` (pago efectivamente confirmado - "ventas confirmadas"/"pagos
+   * aprobados") y `refundedAt` (no existe esa columna todavía, así que reembolsos se filtran por
+   * `createdAt` del pedido original - limitación conocida, documentada en vez de inventar una
+   * fecha). Sin filtros, el comportamiento es IDÉNTICO al de antes de agregar el reporte: las
+   * métricas "confirmadas" siguen asumiendo `paymentStatus = approved` por default - un reporte
+   * puede pasar `paymentStatus` explícito (ej. "rechazados") para reemplazar ese default.
+   */
+  private async getSalesSummary(
+    from: Date,
+    to: Date,
+    filters: SalesReportFilters = {},
+  ): Promise<SalesSummary> {
+    const confirmedStatus = filters.paymentStatus ?? PaymentStatus.APPROVED;
+
+    const createdQb = this.ordersRepository
+      .createQueryBuilder('order')
+      .select('COUNT(*)', 'count')
+      .addSelect('COALESCE(SUM(order.totalValue), 0)', 'gross')
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN order.status IN (:...pendingStatuses) THEN 1 ELSE 0 END), 0)',
+        'pending',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN order.status IN (:...cancelledStatuses) THEN 1 ELSE 0 END), 0)',
+        'cancelled',
+      )
+      .where('order.createdAt >= :from AND order.createdAt < :to', { from, to })
+      .setParameters({
+        pendingStatuses: [OrderStatus.PENDING_PAYMENT, OrderStatus.PROCESSING],
+        cancelledStatuses: [OrderStatus.CANCELLED, OrderStatus.EXPIRED],
+      });
+    if (filters.paymentStatus) {
+      createdQb.andWhere('order.paymentStatus = :explicitStatus', { explicitStatus: filters.paymentStatus });
+    }
+    this.applyOrderLevelFilters(createdQb, filters);
+
+    const paidQb = this.ordersRepository
+      .createQueryBuilder('order')
+      .select('COUNT(*)', 'count')
+      .addSelect('COALESCE(SUM(order.totalValue), 0)', 'value')
+      .where('order.paymentStatus = :confirmedStatus', { confirmedStatus })
+      .andWhere('order.paidAt >= :from AND order.paidAt < :to', { from, to });
+    this.applyOrderLevelFilters(paidQb, filters);
+
+    const unitsQb = this.orderItemsRepository
+      .createQueryBuilder('item')
+      .innerJoin(Order, 'order', 'order.id = item.orderId')
+      .select('COALESCE(SUM(item.quantity), 0)', 'units')
+      .where('order.paymentStatus = :confirmedStatus', { confirmedStatus })
+      .andWhere('order.paidAt >= :from AND order.paidAt < :to', { from, to });
+    this.applyItemLevelFilters(unitsQb, filters);
+
+    const refundedQb = this.ordersRepository
+      .createQueryBuilder('order')
+      .select('COUNT(*)', 'count')
+      .addSelect('COALESCE(SUM(order.totalValue), 0)', 'value')
+      .where('order.paymentStatus = :refunded', { refunded: PaymentStatus.REFUNDED })
+      .andWhere('order.createdAt >= :from AND order.createdAt < :to', { from, to });
+    this.applyOrderLevelFilters(refundedQb, filters);
+
+    const [createdAgg, paidAgg, unitsAgg, refundedAgg] = await Promise.all([
+      createdQb.getRawOne<{ count: string; gross: string; pending: string; cancelled: string }>(),
+      paidQb.getRawOne<{ count: string; value: string }>(),
+      unitsQb.getRawOne<{ units: string }>(),
+      refundedQb.getRawOne<{ count: string; value: string }>(),
+    ]);
+
+    const paidOrdersCount = Number(paidAgg?.count ?? 0);
+    const approvedPaymentsValue = Number(paidAgg?.value ?? 0);
+
+    return {
+      ordersCount: Number(createdAgg?.count ?? 0),
+      grossOrdersValue: Number(createdAgg?.gross ?? 0),
+      pendingOrdersCount: Number(createdAgg?.pending ?? 0),
+      cancelledOrdersCount: Number(createdAgg?.cancelled ?? 0),
+      paidOrdersCount,
+      approvedPaymentsValue,
+      averageTicketValue: paidOrdersCount > 0 ? Math.round(approvedPaymentsValue / paidOrdersCount) : 0,
+      unitsSoldCount: Number(unitsAgg?.units ?? 0),
+      refundedOrdersCount: Number(refundedAgg?.count ?? 0),
+      refundedAmountValue: Number(refundedAgg?.value ?? 0),
+    };
+  }
+
+  /** Entrega el resumen del período elegido y el del período anterior equivalente (ambos
+   *  calculados por el frontend - `DateRangeSelection` - nunca inventados acá), para la
+   *  comparación porcentual de cada KPI. */
+  async getSalesSummaryWithComparison(
+    from: Date,
+    to: Date,
+    previousFrom: Date,
+    previousTo: Date,
+    filters: SalesReportFilters = {},
+  ): Promise<{ current: SalesSummary; previous: SalesSummary }> {
+    const [current, previous] = await Promise.all([
+      this.getSalesSummary(from, to, filters),
+      this.getSalesSummary(previousFrom, previousTo, filters),
+    ]);
+    return { current, previous };
+  }
+
+  /**
+   * Evolución de ventas para el gráfico (ver tarea, punto 3.3) - agrupa por día/semana/mes de
+   * `createdAt` (cohorte por fecha de pedido): "bruto" es todo lo creado en el bucket,
+   * "confirmado"/"unidades" es cuánto de ESE MISMO bucket terminó pagado, sin importar cuándo se
+   * confirmó el pago. Distinto del resumen de arriba (que usa `paidAt` para las tarjetas KPI) a
+   * propósito, para que un único gráfico con un solo eje temporal pueda mostrar las tres series
+   * sin que la serie "aprobado" se corra a días distintos de "bruto".
+   */
+  async getSalesTimeseries(
+    from: Date,
+    to: Date,
+    granularity: SalesBucketGranularity,
+    filters: SalesReportFilters = {},
+  ): Promise<SalesTimeseriesPoint[]> {
+    const confirmedStatus = filters.paymentStatus ?? PaymentStatus.APPROVED;
+
+    const ordersQb = this.ordersRepository
+      .createQueryBuilder('order')
+      .select(['order.id', 'order.totalValue', 'order.paymentStatus', 'order.createdAt'])
+      .where('order.createdAt >= :from AND order.createdAt < :to', { from, to });
+    this.applyOrderLevelFilters(ordersQb, filters);
+    const orders = await ordersQb.getMany();
+
+    const confirmedOrderIds = orders
+      .filter((order) => order.paymentStatus === confirmedStatus)
+      .map((order) => order.id);
+    const items = confirmedOrderIds.length
+      ? await this.orderItemsRepository.find({ where: { orderId: In(confirmedOrderIds) } })
+      : [];
+    const unitsByOrderId = new Map<string, number>();
+    for (const item of items) {
+      unitsByOrderId.set(item.orderId, (unitsByOrderId.get(item.orderId) ?? 0) + item.quantity);
+    }
+
+    interface MutableBucket {
+      bucketStartUtc: string;
+      ordersCount: number;
+      grossValue: number;
+      approvedValue: number;
+      unitsSold: number;
+    }
+
+    const buckets = new Map<string, MutableBucket>();
+    for (const order of orders) {
+      const key = bucketStart(order.createdAt, granularity).toISOString();
+      const point = buckets.get(key) ?? {
+        bucketStartUtc: key,
+        ordersCount: 0,
+        grossValue: 0,
+        approvedValue: 0,
+        unitsSold: 0,
+      };
+      point.ordersCount += 1;
+      point.grossValue += order.totalValue;
+      if (order.paymentStatus === confirmedStatus) {
+        point.approvedValue += order.totalValue;
+        point.unitsSold += unitsByOrderId.get(order.id) ?? 0;
+      }
+      buckets.set(key, point);
+    }
+
+    return [...buckets.values()].sort((a, b) => a.bucketStartUtc.localeCompare(b.bucketStartUtc));
+  }
+
+  /** Distribución de ventas por categoría (ver tarea, punto 3.4) - usa `categorySnapshot` de cada
+   *  línea (la categoría al momento de la venta), nunca la categoría actual del producto, que
+   *  pudo cambiar después. Filtra por `paidAt` - mismo criterio que las tarjetas KPI. */
+  async getSalesByCategory(
+    from: Date,
+    to: Date,
+    filters: SalesReportFilters = {},
+  ): Promise<SalesByCategoryPoint[]> {
+    const confirmedStatus = filters.paymentStatus ?? PaymentStatus.APPROVED;
+    const qb = this.orderItemsRepository
+      .createQueryBuilder('item')
+      .innerJoin(Order, 'order', 'order.id = item.orderId')
+      .select('item.categorySnapshot', 'category')
+      .addSelect('COALESCE(SUM(item.quantity), 0)', 'units')
+      .addSelect('COALESCE(SUM(item.lineTotalValue), 0)', 'revenue')
+      .where('order.paymentStatus = :confirmedStatus', { confirmedStatus })
+      .andWhere('order.paidAt >= :from AND order.paidAt < :to', { from, to })
+      .groupBy('item.categorySnapshot');
+    this.applyItemLevelFilters(qb, filters);
+    const rows = await qb.getRawMany<{ category: string | null; units: string; revenue: string }>();
+
+    const totalRevenue = rows.reduce((sum, row) => sum + Number(row.revenue), 0);
+    return rows
+      .map((row) => ({
+        category: row.category ?? 'sin_categoria',
+        unitsSold: Number(row.units),
+        revenueValue: Number(row.revenue),
+        sharePercent: totalRevenue > 0 ? (Number(row.revenue) / totalRevenue) * 100 : 0,
+      }))
+      .sort((a, b) => b.revenueValue - a.revenueValue);
+  }
+
+  /** Productos más (o menos) vendidos (ver tarea, puntos 3.5 y 4.1) - filtra por `paidAt`, mismo
+   *  criterio que el resto de las métricas de ventas confirmadas. El stock mostrado es el stock
+   *  ACTUAL (no un snapshot), a propósito: es para decidir reposición, no para el historial de
+   *  ventas. */
+  async getTopProducts(
+    from: Date,
+    to: Date,
+    limit: number,
+    sortBy: 'revenue' | 'units',
+    direction: 'top' | 'bottom' = 'top',
+    filters: SalesReportFilters = {},
+  ): Promise<TopProductPoint[]> {
+    const confirmedStatus = filters.paymentStatus ?? PaymentStatus.APPROVED;
+    const sortColumn = sortBy === 'units' ? 'units' : 'revenue';
+    const sortDirection = direction === 'bottom' ? 'ASC' : 'DESC';
+
+    const rowsQb = this.orderItemsRepository
+      .createQueryBuilder('item')
+      .innerJoin(Order, 'order', 'order.id = item.orderId')
+      .select('item.productId', 'productId')
+      .addSelect('item.variantId', 'variantId')
+      .addSelect('item.productName', 'productName')
+      .addSelect('item.variantLabel', 'variantLabel')
+      .addSelect('item.categorySnapshot', 'category')
+      .addSelect('COALESCE(SUM(item.quantity), 0)', 'units')
+      .addSelect('COALESCE(SUM(item.lineTotalValue), 0)', 'revenue')
+      .where('order.paymentStatus = :confirmedStatus', { confirmedStatus })
+      .andWhere('order.paidAt >= :from AND order.paidAt < :to', { from, to })
+      .groupBy('item.productId')
+      .addGroupBy('item.variantId')
+      .addGroupBy('item.productName')
+      .addGroupBy('item.variantLabel')
+      .addGroupBy('item.categorySnapshot')
+      .orderBy(sortColumn, sortDirection)
+      .limit(limit);
+    this.applyItemLevelFilters(rowsQb, filters);
+
+    const totalQb = this.orderItemsRepository
+      .createQueryBuilder('item')
+      .innerJoin(Order, 'order', 'order.id = item.orderId')
+      .select('COALESCE(SUM(item.lineTotalValue), 0)', 'revenue')
+      .where('order.paymentStatus = :confirmedStatus', { confirmedStatus })
+      .andWhere('order.paidAt >= :from AND order.paidAt < :to', { from, to });
+    this.applyItemLevelFilters(totalQb, filters);
+
+    const [rows, totalAgg] = await Promise.all([
+      rowsQb.getRawMany<{
+        productId: string;
+        variantId: string;
+        productName: string;
+        variantLabel: string | null;
+        category: string | null;
+        units: string;
+        revenue: string;
+      }>(),
+      totalQb.getRawOne<{ revenue: string }>(),
+    ]);
+
+    const totalRevenue = Number(totalAgg?.revenue ?? 0);
+    const productIds = [...new Set(rows.map((row) => row.productId))];
+    const variantIds = rows
+      .map((row) => row.variantId)
+      .filter((id) => id !== BASE_VARIANT_ID);
+
+    const [products, variants] = await Promise.all([
+      productIds.length
+        ? this.dataSource.getRepository(Product).find({ where: { id: In(productIds) } })
+        : Promise.resolve([]),
+      variantIds.length
+        ? this.dataSource.getRepository(ProductVariant).find({ where: { id: In(variantIds) } })
+        : Promise.resolve([]),
+    ]);
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const variantById = new Map(variants.map((variant) => [variant.id, variant]));
+
+    return rows.map((row) => {
+      const product = productById.get(row.productId);
+      const variant = row.variantId !== BASE_VARIANT_ID ? variantById.get(row.variantId) : undefined;
+      const revenueValue = Number(row.revenue);
+      const unitsSold = Number(row.units);
+      const unitCost = variant ? variant.costValue : product?.costValue;
+      const marginValue = unitCost != null ? revenueValue - unitCost * unitsSold : null;
+      return {
+        productId: row.productId,
+        variantId: row.variantId,
+        productName: row.productName,
+        variantLabel: row.variantLabel,
+        category: row.category,
+        unitsSold,
+        revenueValue,
+        sharePercent: totalRevenue > 0 ? (revenueValue / totalRevenue) * 100 : 0,
+        currentStock: variant ? variant.stock : (product?.stock ?? null),
+        imageUrl: variant?.images?.[0]?.url ?? product?.images?.[0]?.url ?? null,
+        brand: product?.brand ?? null,
+        marginValue,
+        marginPercent: marginValue != null && revenueValue > 0 ? (marginValue / revenueValue) * 100 : null,
+      };
+    });
+  }
+
   /** Usado solo por `PaymentsService` - verifica dueño + que la orden todavía admita un intento. */
   async getPayableOrderOrThrow(userId: string, orderId: string): Promise<Order> {
     const order = await this.ordersRepository.findOne({ where: { id: orderId } });
@@ -530,6 +1018,7 @@ export class OrdersService {
     order.paymentStatus = paymentStatus;
     order.status = nextStatus;
     if (nextStatus !== OrderStatus.PENDING_PAYMENT) order.expiresAt = null;
+    if (nextStatus === OrderStatus.PAID && !order.paidAt) order.paidAt = new Date();
 
     return this.ordersRepository.save(order);
   }

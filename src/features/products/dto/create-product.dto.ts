@@ -74,6 +74,13 @@ export class CreateProductDto {
   @IsPositive()
   oldPriceValue?: number;
 
+  /** Costo de adquisición/fabricación (ver tarea, punto 4.3 "rentabilidad") - opcional, nunca se
+   *  infiere del precio de venta. */
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  costValue?: number;
+
   @IsOptional()
   @IsString()
   @MaxLength(60)

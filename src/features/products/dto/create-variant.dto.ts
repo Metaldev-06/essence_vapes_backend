@@ -13,6 +13,11 @@ export class CreateVariantDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  costValue?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
   stock?: number;
 
   @IsOptional()

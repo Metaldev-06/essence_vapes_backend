@@ -47,3 +47,12 @@ export const toOrderResponse = (order: Order, items: OrderItem[]) => ({
 });
 
 export type OrderResponse = ReturnType<typeof toOrderResponse>;
+
+/** SOLO para rutas admin - agrega las notas internas (ver tarea, punto 7.4), que nunca deben
+ *  viajar en la respuesta que el propio comprador ve de su pedido (`toOrderResponse` a secas). */
+export const toAdminOrderResponse = (order: Order, items: OrderItem[]) => ({
+  ...toOrderResponse(order, items),
+  internalNotes: order.internalNotes ?? null,
+});
+
+export type AdminOrderResponse = ReturnType<typeof toAdminOrderResponse>;

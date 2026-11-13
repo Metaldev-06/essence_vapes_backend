@@ -23,6 +23,12 @@ export class ProductVariant {
   @Column({ type: 'int' })
   priceValue!: number;
 
+  // Costo de adquisición/fabricación de ESTA variante - `null` hasta que el admin lo carga (ver
+  // tarea, punto 4.3). No hereda el costo del producto base: cada variante puede tener un costo
+  // distinto (ej. 2ml vs 10ml de un mismo decant).
+  @Column({ type: 'int', nullable: true })
+  costValue?: number | null;
+
   @Column({ type: 'int', default: 0 })
   stock!: number;
 

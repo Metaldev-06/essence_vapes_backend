@@ -49,6 +49,12 @@ export class Product {
   @Column({ type: 'int', nullable: true })
   oldPriceValue?: number | null;
 
+  // Costo de adquisición/fabricación - `null` hasta que el admin lo carga (ver tarea, punto 4.3:
+  // "rentabilidad"). Nunca se infiere del precio de venta; mientras sea `null`, cualquier reporte
+  // de margen/rentabilidad para este producto debe mostrarse como "no disponible", no en cero.
+  @Column({ type: 'int', nullable: true })
+  costValue?: number | null;
+
   @Column({ type: 'varchar', nullable: true })
   badge?: string | null;
 

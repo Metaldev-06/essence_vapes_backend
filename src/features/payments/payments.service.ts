@@ -30,6 +30,22 @@ import {
  *  (checklist de calidad oficial de MP: `statement_descriptor_/_soft_descriptor`). */
 const STATEMENT_DESCRIPTOR = 'ESSENCEVAPES';
 
+/** Resultado de comparar el estado interno de UNA orden contra su estado real en Mercado Pago,
+ *  consultado en el momento (ver tarea, punto 8.4 "conciliación") - nunca persiste ni corrige
+ *  nada solo, es una verificación de solo lectura a pedido del admin. */
+export interface OrderReconciliationReport {
+  readonly checked: boolean;
+  readonly reason?: string;
+  readonly checkedAt: string;
+  readonly mpOrderId?: string;
+  readonly internalPaymentStatus?: PaymentStatus;
+  readonly mpPaymentStatus?: PaymentStatus;
+  readonly internalAmountValue?: number;
+  readonly mpAmountValue?: number;
+  readonly matches?: boolean;
+  readonly discrepancies: string[];
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -138,6 +154,78 @@ export class PaymentsService {
    *  ver COMPLIANCE/tarea: el admin necesita poder ubicar la operación del lado de MP). */
   async getAttemptsForOrder(orderId: string): Promise<PaymentAttempt[]> {
     return this.attemptsRepository.find({ where: { orderId }, order: { createdAt: 'DESC' } });
+  }
+
+  /**
+   * Conciliación bajo demanda de UNA orden (ver tarea, punto 8.4) - vuelve a consultar el estado
+   * real en Mercado Pago (nunca confía en lo que ya está guardado) y lo compara contra el estado
+   * interno. Es una verificación de solo lectura: no corrige nada automáticamente, solo informa
+   * la diferencia para que el admin decida. No hay un job en segundo plano que recorra todas las
+   * órdenes (eso golpearía la API de MP sin necesidad) - se dispara una orden a la vez, cuando el
+   * admin lo pide.
+   */
+  async reconcileOrder(orderId: string): Promise<OrderReconciliationReport> {
+    const checkedAt = new Date().toISOString();
+    const { order } = await this.ordersService.getOrderWithItems(orderId);
+
+    const [latestAttempt] = await this.attemptsRepository.find({
+      where: { orderId },
+      order: { createdAt: 'DESC' },
+      take: 1,
+    });
+
+    if (!latestAttempt?.mpOrderId) {
+      return {
+        checked: false,
+        reason: 'Esta orden todavía no tiene ningún intento de pago con Mercado Pago.',
+        checkedAt,
+        discrepancies: [],
+      };
+    }
+
+    let mpResponse: MpOrderResponse;
+    try {
+      mpResponse = await this.mercadoPagoService.getOrder(latestAttempt.mpOrderId);
+    } catch {
+      return {
+        checked: false,
+        reason:
+          'No pudimos consultar el estado real en Mercado Pago en este momento - probá de nuevo en unos segundos.',
+        checkedAt,
+        mpOrderId: latestAttempt.mpOrderId,
+        discrepancies: [],
+      };
+    }
+
+    const mpPaymentStatus = mapMercadoPagoStatus(mpResponse.status);
+    const internalPaymentStatus = order.paymentStatus;
+    const mpAmountValue =
+      mpResponse.total_amount != null ? Math.round(Number(mpResponse.total_amount)) : null;
+    const internalAmountValue = order.totalValue;
+
+    const discrepancies: string[] = [];
+    if (mpPaymentStatus !== internalPaymentStatus) {
+      discrepancies.push(
+        `Estado interno ("${internalPaymentStatus}") no coincide con el estado real en Mercado Pago ("${mpPaymentStatus}").`,
+      );
+    }
+    if (mpAmountValue != null && mpAmountValue !== internalAmountValue) {
+      discrepancies.push(
+        `Importe interno ($${internalAmountValue}) no coincide con el importe en Mercado Pago ($${mpAmountValue}).`,
+      );
+    }
+
+    return {
+      checked: true,
+      checkedAt,
+      mpOrderId: latestAttempt.mpOrderId,
+      internalPaymentStatus,
+      mpPaymentStatus,
+      internalAmountValue,
+      mpAmountValue: mpAmountValue ?? undefined,
+      matches: discrepancies.length === 0,
+      discrepancies,
+    };
   }
 
   /**

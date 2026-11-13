@@ -34,6 +34,15 @@ export class PaymentsController {
     return this.paymentsService.getAttemptsForOrder(orderId);
   }
 
+  /** Conciliación bajo demanda (ver tarea, punto 8.4) - vuelve a consultar Mercado Pago en el
+   *  momento, nunca confía en lo ya guardado. Throttle bajo: golpea la Orders API real. */
+  @Get('admin/orders/:orderId/reconcile')
+  @Auth(Role.ADMIN)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  reconcileOrder(@Param('orderId') orderId: string) {
+    return this.paymentsService.reconcileOrder(orderId);
+  }
+
   /** Panel admin "Transacciones" (ver tarea, punto 6) - sección independiente de "Pedidos". */
   @Get('admin/transactions')
   @Auth(Role.ADMIN)

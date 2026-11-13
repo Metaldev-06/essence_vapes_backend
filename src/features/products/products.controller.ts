@@ -22,6 +22,7 @@ import { memoryStorage } from 'multer';
 import { Role } from '../../common/enums/system-role.enum';
 import { UserAwareThrottlerGuard } from '../../common/guards/user-aware-throttler.guard';
 import { Auth } from '../auth/decorators/auth.decorator';
+import { GetUser } from '../auth/decorators/get-user.decorator';
 import { FragranceAiService } from './ai/fragrance-ai.service';
 import {
   IMAGE_MIME_TYPES,
@@ -31,7 +32,9 @@ import {
   MAX_VIDEO_SIZE_BYTES,
   VIDEO_MIME_TYPES,
 } from './constants/media.constants';
+import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { AiLookupDto } from './dto/ai-lookup.dto';
+import { BulkUpdateProductsDto } from './dto/bulk-update-products.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateVariantDto } from './dto/create-variant.dto';
 import { ProductsQueryDto } from './dto/products-query.dto';
@@ -89,6 +92,19 @@ export class ProductsController {
     return this.productsService.findAllForAdmin(query);
   }
 
+  /** Acciones masivas (ver tarea, punto 5.2) - publicar/ocultar/destacar/recategorizar varios
+   *  productos a la vez. */
+  @Patch('admin/bulk')
+  @Auth(Role.ADMIN)
+  bulkUpdate(
+    @Body() dto: BulkUpdateProductsDto,
+    @GetUser('id') adminId: string,
+    @GetUser('email') adminEmail: string,
+  ) {
+    const { ids, ...changes } = dto;
+    return this.productsService.bulkUpdate(ids, changes, { id: adminId, email: adminEmail });
+  }
+
   /**
    * Public, lightweight stock lookup for a batch of ids - used by the cart to re-check
    * availability for guests (no backend cart to join against) without fetching full product
@@ -104,6 +120,40 @@ export class ProductsController {
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
+  }
+
+  /** Mismo producto que la ruta pública de arriba, pero con el costo de adquisición incluido
+   *  (ver tarea, punto 4.3) - nunca expuesto por la ruta pública. Usada por el formulario admin
+   *  para precargar la edición. */
+  @Get(':id/admin')
+  @Auth(Role.ADMIN)
+  findOneForAdmin(@Param('id') id: string) {
+    return this.productsService.findOneForAdmin(id);
+  }
+
+  /** Historial de ajustes manuales de stock (ver tarea, punto 5.3). */
+  @Get(':id/stock-movements')
+  @Auth(Role.ADMIN)
+  getStockMovements(@Param('id') id: string) {
+    return this.productsService.getStockMovements(id);
+  }
+
+  /** Ajuste manual de stock con motivo obligatorio (ver tarea, punto 5.3). */
+  @Post(':id/stock-movements')
+  @Auth(Role.ADMIN)
+  adjustStock(
+    @Param('id') id: string,
+    @Body() dto: AdjustStockDto,
+    @GetUser('id') adminId: string,
+    @GetUser('email') adminEmail: string,
+  ) {
+    return this.productsService.adjustStock(
+      id,
+      dto.variantId ?? 'base',
+      dto.quantityChange,
+      dto.reason,
+      { id: adminId, email: adminEmail },
+    );
   }
 
   @Post()

@@ -187,3 +187,27 @@ export const toProductCardResponse = (
 });
 
 export type ProductCardResponse = ReturnType<typeof toProductCardResponse>;
+
+/**
+ * SOLO para rutas admin autenticadas (`GET /products/admin/:id`) - nunca para `GET /products/:id`
+ * (público, lo usa también el storefront). Agrega el costo de adquisición de cada variante
+ * (ver tarea, punto 4.3 "rentabilidad") - un dato sensible de negocio que jamás debe viajar en la
+ * respuesta pública, a diferencia del resto del producto que sí es información de catálogo.
+ */
+export const toAdminProductResponse = (product: Product, variants: ProductVariant[] = []) => {
+  const base = toProductResponse(product, variants);
+  const costByVariantId = new Map<string, number | null>([
+    [BASE_VARIANT_ID, product.costValue ?? null],
+    ...variants.map((variant): [string, number | null] => [variant.id, variant.costValue ?? null]),
+  ]);
+  return {
+    ...base,
+    costValue: product.costValue ?? null,
+    variants: base.variants.map((variant) => ({
+      ...variant,
+      costValue: costByVariantId.get(variant.id) ?? null,
+    })),
+  };
+};
+
+export type AdminProductResponse = ReturnType<typeof toAdminProductResponse>;

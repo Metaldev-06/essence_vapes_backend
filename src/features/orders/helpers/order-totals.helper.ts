@@ -2,6 +2,9 @@ export interface OrderableLine {
   productId: string;
   variantId: string;
   productName: string;
+  /** `Product.category` al momento de la venta - opcional solo para no romper tests existentes
+   *  que no la necesitan; quien crea la orden real siempre la pasa (ver `OrdersService`). */
+  category?: string;
   variantLabel: string | null;
   unitPriceValue: number;
   quantity: number;

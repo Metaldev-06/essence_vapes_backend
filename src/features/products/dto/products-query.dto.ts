@@ -100,6 +100,25 @@ export class ProductsQueryDto {
   @Min(0)
   maxPrice?: number;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minStock?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  maxStock?: number;
+
+  /** Estado de publicación (ver tarea, punto 5.1) - solo tiene efecto real en la ruta admin; en
+   *  el catálogo público, `activeOnly: true` ya fuerza "solo activos" aparte de este filtro. */
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  isActive?: boolean;
+
   // Ml capacity of the variant row (e.g. 2, 5, 10, 100) - matched against the number parsed out
   // of each row's variantLabel by `parseCapacityMl`, not a stored column.
   @IsOptional()

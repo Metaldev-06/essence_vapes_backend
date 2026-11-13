@@ -27,6 +27,12 @@ export class OrderItem {
   @Column({ type: 'varchar' })
   productName!: string;
 
+  // Snapshot de `Product.category` al momento de la venta - un reporte de ventas por categoría
+  // agrupado por la categoría ACTUAL del producto daría cifras incorrectas si el producto cambió
+  // de categoría después de vendido. `null` solo en líneas creadas antes de este campo.
+  @Column({ type: 'varchar', nullable: true })
+  categorySnapshot?: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   variantLabel?: string | null;
 

@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsDateString, IsEnum, IsIn, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsIn, IsInt, IsOptional, IsPositive, IsString, Max, Min } from 'class-validator';
 
 import { SortOrder } from '../../../common/enums/sort-order.enum';
 import { DeliveryMethod } from '../enums/delivery-method.enum';
@@ -63,4 +63,23 @@ export class QueryOrdersDto {
   @IsOptional()
   @IsDateString()
   dateTo?: string;
+
+  /** Importe mínimo/máximo del pedido (ver tarea, punto 7.2) - en pesos, igual que `totalValue`. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  minAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  maxAmount?: number;
+
+  /** Filtra por el medio de pago del intento APROBADO del pedido (join contra
+   *  `payment_attempts` - el pedido en sí no tiene esta columna). */
+  @IsOptional()
+  @IsIn(['credit_card', 'debit_card'])
+  paymentMethodType?: 'credit_card' | 'debit_card';
 }

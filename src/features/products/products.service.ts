@@ -16,7 +16,9 @@ import { ProductsQueryDto } from './dto/products-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { UpdateVariantDto } from './dto/update-variant.dto';
 import { Product } from './entities/product.entity';
+import { ProductAuditLog } from './entities/product-audit-log.entity';
 import { ProductVariant } from './entities/product-variant.entity';
+import { StockMovement } from './entities/stock-movement.entity';
 import { ProductCategory } from './enums/product-category.enum';
 import { SaleAuthorizationStatus } from './enums/sale-authorization-status.enum';
 import { parseCapacityMl } from './helpers/capacity.helper';
@@ -28,9 +30,17 @@ import {
   flattenProductVariant,
   ProductCardResponse,
   ProductResponse,
+  toAdminProductResponse,
   toProductCardResponse,
   toProductResponse,
 } from './mappers/product-response.mapper';
+
+/** Mismo shape que `AdminActor` de `features/orders`/`features/messages` - quién hizo la acción
+ *  administrativa. Definido local acá para no crear una dependencia cruzada entre features. */
+export interface ProductAdminActor {
+  readonly id: string;
+  readonly email: string;
+}
 
 @Injectable()
 export class ProductsService {
@@ -39,6 +49,10 @@ export class ProductsService {
     private readonly productsRepository: Repository<Product>,
     @InjectRepository(ProductVariant)
     private readonly productVariantsRepository: Repository<ProductVariant>,
+    @InjectRepository(ProductAuditLog)
+    private readonly auditLogsRepository: Repository<ProductAuditLog>,
+    @InjectRepository(StockMovement)
+    private readonly stockMovementsRepository: Repository<StockMovement>,
     private readonly cloudinaryService: CloudinaryService,
     private readonly configService: ConfigService,
   ) {}
@@ -71,6 +85,9 @@ export class ProductsService {
       featured,
       minPrice,
       maxPrice,
+      minStock,
+      maxStock,
+      isActive,
     } = query;
 
     try {
@@ -87,6 +104,9 @@ export class ProductsService {
         qb.andWhere('product.priceValue >= :minPrice', { minPrice });
       if (maxPrice !== undefined)
         qb.andWhere('product.priceValue <= :maxPrice', { maxPrice });
+      if (minStock !== undefined) qb.andWhere('product.stock >= :minStock', { minStock });
+      if (maxStock !== undefined) qb.andWhere('product.stock <= :maxStock', { maxStock });
+      if (isActive !== undefined) qb.andWhere('product.isActive = :isActive', { isActive });
       if (styles && styles.length > 0) this.applyStylesFilter(qb, styles);
 
       qb.orderBy(`product.${sort}`, order.toUpperCase() as 'ASC' | 'DESC')
@@ -513,6 +533,14 @@ export class ProductsService {
     return toProductResponse(product, variants);
   }
 
+  /** Mismo producto que `findOne`, pero con el costo de adquisición incluido (ver
+   *  `toAdminProductResponse`) - solo para la ruta admin, nunca para la pública. */
+  async findOneForAdmin(id: string) {
+    const product = await this.findEntityOrFail(id);
+    const variants = await this.findVariantsForProduct(id);
+    return toAdminProductResponse(product, variants);
+  }
+
   async create(dto: CreateProductDto) {
     this.assertVapeContentAllowed(dto.category, dto.name, dto.subtitle, dto.notes);
 
@@ -575,6 +603,123 @@ export class ProductsService {
       await this.productVariantsRepository.delete({ productId: id });
     }
     await this.productsRepository.delete(id);
+  }
+
+  /**
+   * Acciones masivas (ver tarea, punto 5.2) - un solo UPDATE por campo (no uno por producto), y
+   * una entrada de auditoría POR producto afectado para poder rastrear después qué cambió y
+   * quién lo hizo (mismo patrón que `OrderAuditLog`). `changes` solo trae los campos que el admin
+   * realmente quiso tocar - nunca pisa algo que no vino en el pedido.
+   */
+  async bulkUpdate(
+    ids: string[],
+    changes: { isActive?: boolean; featured?: boolean; category?: ProductCategory },
+    actor: ProductAdminActor,
+  ): Promise<{ updated: number }> {
+    if (ids.length === 0) return { updated: 0 };
+    if (Object.keys(changes).length === 0) return { updated: 0 };
+
+    if (changes.category) {
+      // Reutiliza la misma validación regulatoria que ya aplica `update()` - cambiar de categoría
+      // en masa no debe poder saltarse las restricciones de "vapes" (Ley 26.687).
+      const targets = await this.productsRepository.find({ where: { id: In(ids) } });
+      for (const target of targets) {
+        this.assertVapeContentAllowed(changes.category, target.name, target.subtitle, target.notes);
+      }
+    }
+
+    const result = await this.productsRepository
+      .createQueryBuilder()
+      .update(Product)
+      .set(changes)
+      .where('id IN (:...ids)', { ids })
+      .execute();
+
+    const detailParts: string[] = [];
+    if (changes.isActive !== undefined) detailParts.push(changes.isActive ? 'publicado' : 'ocultado');
+    if (changes.featured !== undefined) {
+      detailParts.push(changes.featured ? 'marcado como destacado' : 'quitado de destacados');
+    }
+    if (changes.category) detailParts.push(`categoría -> ${changes.category}`);
+    const detail = `Acción masiva: ${detailParts.join(', ')}`;
+
+    await this.auditLogsRepository.save(
+      ids.map((productId) =>
+        this.auditLogsRepository.create({
+          adminId: actor.id,
+          adminEmail: actor.email,
+          action: 'bulk_update',
+          productId,
+          detail,
+        }),
+      ),
+    );
+
+    return { updated: result.affected ?? 0 };
+  }
+
+  /**
+   * Ajuste manual de stock con motivo obligatorio (ver tarea, punto 5.3) - UPDATE atómico
+   * condicionado por el propio WHERE (`stock + :change >= 0`, mismo criterio que la reserva de
+   * stock del checkout en `OrdersService.createFromCart`), para que un ajuste negativo nunca deje
+   * el stock por debajo de 0 aunque dos ajustes lleguen a la vez.
+   */
+  async adjustStock(
+    productId: string,
+    variantId: string,
+    quantityChange: number,
+    reason: string,
+    actor: ProductAdminActor,
+  ): Promise<{ stockAfter: number }> {
+    if (quantityChange === 0) throw new BadRequestException('El ajuste no puede ser 0');
+
+    const isBase = variantId === BASE_VARIANT_ID;
+    const entity = isBase ? Product : ProductVariant;
+    const where = isBase
+      ? { id: productId }
+      : { id: variantId, productId };
+
+    const result = await this.productsRepository.manager
+      .createQueryBuilder()
+      .update(entity)
+      .set({ stock: () => 'stock + :change' })
+      .where(
+        Object.keys(where)
+          .map((key) => `${key} = :${key}`)
+          .join(' AND ') + ' AND stock + :change >= 0',
+        { ...where, change: quantityChange },
+      )
+      .execute();
+
+    if (!result.affected) {
+      throw new BadRequestException('El ajuste dejaría el stock en negativo, o no se encontró el producto/variante');
+    }
+
+    const updated = isBase
+      ? await this.productsRepository.findOne({ where: { id: productId } })
+      : await this.productVariantsRepository.findOne({ where: { id: variantId, productId } });
+    const stockAfter = updated?.stock ?? 0;
+
+    await this.stockMovementsRepository.save(
+      this.stockMovementsRepository.create({
+        productId,
+        variantId,
+        quantityChange,
+        stockAfter,
+        reason,
+        adminId: actor.id,
+        adminEmail: actor.email,
+      }),
+    );
+
+    return { stockAfter };
+  }
+
+  async getStockMovements(productId: string): Promise<StockMovement[]> {
+    return this.stockMovementsRepository.find({
+      where: { productId },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async addImages(id: string, files: Express.Multer.File[]) {
@@ -674,6 +819,7 @@ export class ProductsService {
       const variant = this.productVariantsRepository.create({
         label: dto.label,
         priceValue: dto.priceValue,
+        costValue: dto.costValue ?? null,
         stock: dto.stock ?? 0,
         sortOrder: dto.sortOrder ?? 0,
         featured: dto.featured ?? false,
