@@ -170,7 +170,9 @@ export class NotificationsController {
       title: 'Notificación de prueba',
       body: 'Las notificaciones push de Essence Vapes funcionan en este dispositivo.',
       url: '/admin/notificaciones/configuracion',
-      tag: 'test-push',
+      // Etiqueta única por prueba: con una fija, cada prueba reemplazaba EN SILENCIO a la
+      // anterior mientras siguiera en el centro de notificaciones, y parecía que no llegaba.
+      tag: `test-push-${Date.now()}`,
       critical: false,
     });
     return { attempted: result.attempted, delivered: result.delivered };
