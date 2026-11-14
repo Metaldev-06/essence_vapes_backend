@@ -9,7 +9,19 @@ import { Repository } from 'typeorm';
 import { HandleDBExceptions } from '../../common/helpers/handleDBExeption.helper';
 import { LoggerHelper } from '../../common/helpers/logger.helper';
 import { EmailService } from '../../common/services/email/email.service';
+import { sanitizeErrorMessage } from '../notifications/helpers/notification-text.helper';
+import {
+  orderCancelledEvent,
+  orderPaidEvent,
+  paymentChargedBackEvent,
+  paymentMismatchEvent,
+  paymentProcessingErrorEvent,
+  paymentRefundedEvent,
+  paymentWebhookUnprocessedEvent,
+} from '../notifications/notification-events';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Order } from '../orders/entities/order.entity';
+import { OrderStatus } from '../orders/enums/order-status.enum';
 import { PaymentStatus } from '../orders/enums/payment-status.enum';
 import { OrdersService } from '../orders/orders.service';
 import { ProcessPaymentDto } from './dto/process-payment.dto';
@@ -55,6 +67,7 @@ export class PaymentsService {
     private readonly mercadoPagoService: MercadoPagoService,
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -80,6 +93,11 @@ export class PaymentsService {
       amountValue: order.totalValue,
     });
     await this.attemptsRepository.save(attempt);
+
+    // Queda seteado apenas Mercado Pago responde - le permite al `catch` distinguir "MP rechazó
+    // o no respondió" (un intento fallido más, no amerita aviso) de "MP SÍ procesó el pago pero
+    // no pudimos registrarlo" (requiere intervención: puede haber plata cobrada sin reflejar).
+    let mpAnswered = false;
 
     try {
       const mpResponse = await this.mercadoPagoService.createOrder(
@@ -140,9 +158,18 @@ export class PaymentsService {
         idempotencyKey,
         deviceId,
       );
+      mpAnswered = true;
 
-      return this.recordAttemptResult(attempt, order, mpResponse);
+      return await this.recordAttemptResult(attempt, order, mpResponse);
     } catch (error) {
+      if (mpAnswered) {
+        void this.notificationsService.publish(
+          paymentProcessingErrorEvent(
+            order,
+            `Mercado Pago procesó el intento pero no se pudo registrar el resultado (${sanitizeErrorMessage(error)}). Verificá el estado real con "Conciliar" en el detalle del pedido.`,
+          ),
+        );
+      }
       attempt.status = PaymentStatus.REJECTED;
       attempt.failureReason = error instanceof Error ? error.message : 'Error desconocido';
       await this.attemptsRepository.save(attempt);
@@ -293,6 +320,12 @@ export class PaymentsService {
         'PaymentsService',
         true,
       );
+      void this.notificationsService.publish(
+        paymentWebhookUnprocessedEvent(
+          mpOrderResponse.id,
+          'No corresponde a ningún intento de pago registrado en la tienda.',
+        ),
+      );
       return;
     }
 
@@ -323,6 +356,7 @@ export class PaymentsService {
 
     if (previousStatus !== paymentStatus) {
       void this.notifyPaymentStatus(updatedOrder);
+      void this.notifyAdmins(updatedOrder, order.status, mpResponse);
     }
 
     return {
@@ -331,6 +365,66 @@ export class PaymentsService {
       paymentStatus: updatedOrder.paymentStatus,
       statusDetail: attempt.statusDetail ?? undefined,
     };
+  }
+
+  /**
+   * Notificaciones para los administradores. Mismo contrato que `notifyPaymentStatus`: solo se
+   * llama desde `recordAttemptResult`, o sea DESPUÉS de que el estado salió de una respuesta
+   * real de Mercado Pago (la creación del pago o la re-consulta del webhook) y ya quedó
+   * persistido - nunca por algo que reportó el frontend. Un pago `pending`/`in_process`/
+   * `rejected` no genera ningún aviso: solo los estados que requieren que alguien haga algo.
+   *
+   * `previousOrderStatus` es el estado de la orden ANTES de aplicar este resultado.
+   */
+  private async notifyAdmins(
+    order: Order,
+    previousOrderStatus: OrderStatus,
+    mpResponse: MpOrderResponse,
+  ): Promise<void> {
+    switch (order.paymentStatus) {
+      case PaymentStatus.APPROVED: {
+        await this.notificationsService.publish(orderPaidEvent(order));
+
+        // El pago se confirmó sobre una orden cuya reserva de stock ya se había liberado
+        // (venció o se canceló antes de que MP terminara de procesar): está cobrada, pero las
+        // unidades pudieron venderse a otra persona.
+        if (previousOrderStatus === OrderStatus.EXPIRED || previousOrderStatus === OrderStatus.CANCELLED) {
+          await this.notificationsService.publish(
+            paymentMismatchEvent(
+              order,
+              'paid_after_release',
+              'El pago se aprobó después de que la reserva de stock se liberó. Verificá que haya unidades disponibles antes de preparar el pedido.',
+            ),
+          );
+        }
+
+        const mpAmount = mpResponse.total_amount != null ? Math.round(Number(mpResponse.total_amount)) : null;
+        if (mpAmount !== null && Number.isFinite(mpAmount) && mpAmount !== order.totalValue) {
+          await this.notificationsService.publish(
+            paymentMismatchEvent(
+              order,
+              'amount',
+              `Mercado Pago informa un cobro de $${mpAmount} y el pedido es por $${order.totalValue}. Revisalo antes de prepararlo.`,
+            ),
+          );
+        }
+        return;
+      }
+      case PaymentStatus.REFUNDED:
+        await this.notificationsService.publish(paymentRefundedEvent(order));
+        return;
+      case PaymentStatus.CHARGED_BACK:
+        await this.notificationsService.publish(paymentChargedBackEvent(order));
+        return;
+      case PaymentStatus.CANCELLED:
+        // Una orden que ya estaba vencida/cancelada no es novedad para nadie.
+        if (previousOrderStatus !== OrderStatus.EXPIRED && previousOrderStatus !== OrderStatus.CANCELLED) {
+          await this.notificationsService.publish(orderCancelledEvent(order));
+        }
+        return;
+      default:
+        return;
+    }
   }
 
   /**

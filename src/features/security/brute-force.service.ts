@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { LoggerHelper } from '../../common/helpers/logger.helper';
+import { adminLockoutEvent, ipBlockedEvent } from '../notifications/notification-events';
+import { NotificationsService } from '../notifications/notifications.service';
 import { SecurityEventType } from './enums/security-event-type.enum';
 import { computeLockoutDurationMs } from './helpers/lockout-tier.helper';
 import { SecurityStateService } from './security-state.service';
@@ -31,6 +33,7 @@ export class BruteForceService {
   constructor(
     private readonly securityState: SecurityStateService,
     private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private get config(): BruteForceConfig {
@@ -95,6 +98,7 @@ export class BruteForceService {
       lockout.failedCount = 0;
       lockout.windowStartedAt = new Date(now);
       this.logIfPersistent(durationMs, cfg, `la cuenta ${email}`);
+      void this.notifyIfAdminAccount(email, durationMs);
     }
 
     await this.securityState.saveAccountLockout(lockout);
@@ -115,7 +119,22 @@ export class BruteForceService {
     const current = await this.securityState.getIpBlock(ip);
     const durationMs = this.tierDuration(current?.strikeCount ?? 0, cfg);
     await this.securityState.blockIp(ip, 'Demasiados intentos de login fallidos desde esta IP', durationMs);
+    void this.notificationsService.publish(
+      ipBlockedEvent(ip, 'Se bloqueó una IP por demasiados intentos de ingreso fallidos'),
+    );
     this.logIfPersistent(durationMs, cfg, `la IP ${ip}`);
+  }
+
+  /** Solo avisa si la cuenta bloqueada es de un administrador - el bloqueo de un cliente que
+   *  se olvidó la contraseña no es un evento de seguridad del panel. El aviso nunca incluye
+   *  el email atacado ni ningún dato de la contraseña intentada. */
+  private async notifyIfAdminAccount(email: string, durationMs: number): Promise<void> {
+    try {
+      if (!(await this.notificationsService.isAdminEmail(email))) return;
+      await this.notificationsService.publish(adminLockoutEvent(Math.max(1, Math.round(durationMs / 60_000))));
+    } catch {
+      /* Un fallo al avisar nunca debe afectar al flujo de login. */
+    }
   }
 
   private tierDuration(tier: number, cfg: BruteForceConfig): number {

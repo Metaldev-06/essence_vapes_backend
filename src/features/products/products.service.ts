@@ -6,6 +6,7 @@ import { In, Repository } from 'typeorm';
 
 import { CloudinaryService } from '../../common/services/cloudinary/cloudinary.service';
 import { HandleDBExceptions } from '../../common/helpers/handleDBExeption.helper';
+import { StockAlertService } from '../notifications/stock-alert.service';
 import {
   MAX_IMAGES_PER_PRODUCT,
   MAX_VIDEOS_PER_PRODUCT,
@@ -56,6 +57,7 @@ export class ProductsService {
     private readonly stockMovementsRepository: Repository<StockMovement>,
     private readonly cloudinaryService: CloudinaryService,
     private readonly configService: ConfigService,
+    private readonly stockAlertService: StockAlertService,
   ) {}
 
   /** Public catalog - one row PER VARIANT, so a product with 3 variants shows as 3 cards. */
@@ -587,6 +589,11 @@ export class ProductsService {
       Object.assign(product, dto);
       product.requiresAgeVerification = category === ProductCategory.VAPES;
       const saved = await this.productsRepository.save(product);
+      // Editar el stock (o volver a publicar el producto) desde el formulario también puede
+      // cruzar un umbral - mismo aviso que un ajuste manual. Sin esperar; nunca lanza.
+      if (dto.stock !== undefined || dto.isActive !== undefined) {
+        void this.stockAlertService.evaluate([{ productId: id, variantId: BASE_VARIANT_ID }]);
+      }
       const variants = await this.findVariantsForProduct(id);
       return toProductResponse(saved, variants);
     } catch (error) {
@@ -725,6 +732,8 @@ export class ProductsService {
       }),
     );
 
+    void this.stockAlertService.evaluate([{ productId, variantId }]);
+
     return { stockAfter };
   }
 
@@ -855,6 +864,9 @@ export class ProductsService {
     try {
       Object.assign(variant, dto);
       await this.productVariantsRepository.save(variant);
+      if (dto.stock !== undefined) {
+        void this.stockAlertService.evaluate([{ productId, variantId }]);
+      }
       return this.findOne(productId);
     } catch (error) {
       HandleDBExceptions(error, 'ProductsService.updateVariant');

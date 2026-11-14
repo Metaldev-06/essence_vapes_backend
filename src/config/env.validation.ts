@@ -161,4 +161,14 @@ export const envValidationSchema = Joi.object({
   PICKUP_POINT_ADDRESS: Joi.string().allow('').optional(),
   PICKUP_POINT_HOURS: Joi.string().allow('').optional(),
   PICKUP_POINT_NOTES: Joi.string().allow('').optional(),
+
+  // --- Notificaciones administrativas (ver notifications.config.ts / NOTIFICATIONS.md) ---
+  // Par de claves VAPID para Web Push (`npx web-push generate-vapid-keys`). Opcionales: sin
+  // ellas el backend arranca igual y el canal push queda apagado (panel y email siguen andando).
+  // La privada nunca se loguea ni se expone.
+  VAPID_PUBLIC_KEY: Joi.string().allow('').optional(),
+  VAPID_PRIVATE_KEY: Joi.string().allow('').optional(),
+  // `mailto:` o URL https de contacto, exigido por la especificación VAPID.
+  VAPID_SUBJECT: Joi.string().allow('').optional(),
+  NOTIFICATIONS_DELIVERY_MAX_ATTEMPTS: Joi.number().integer().min(1).max(10).default(5),
 });

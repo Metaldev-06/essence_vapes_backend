@@ -11,6 +11,8 @@ import { MessageThreadState } from './entities/message-thread-state.entity';
 import { WebhookEventLog } from './entities/webhook-event-log.entity';
 import { InboxAddress } from './enums/inbox-address.enum';
 import { verifyResendWebhook } from './helpers/webhook-signature.helper';
+import { newMessageEvent } from '../notifications/notification-events';
+import { NotificationsService } from '../notifications/notifications.service';
 import { MessagesRealtimeService } from './messages-realtime.service';
 
 /**
@@ -25,6 +27,7 @@ export class MessagesWebhookController {
     private readonly configService: ConfigService,
     private readonly adapter: ResendInboxAdapter,
     private readonly realtime: MessagesRealtimeService,
+    private readonly notificationsService: NotificationsService,
     @InjectRepository(WebhookEventLog)
     private readonly webhookEvents: Repository<WebhookEventLog>,
     @InjectRepository(MessageThreadState)
@@ -95,6 +98,9 @@ export class MessagesWebhookController {
         }
 
         this.realtime.emit({ type: 'thread.new_email', inbox, threadId: data.thread_id });
+        // Campana del panel (ver `features/notifications`) - no reemplaza al evento de arriba,
+        // que es lo que refresca la bandeja cuando la página de Mensajes está abierta.
+        void this.notificationsService.publish(newMessageEvent(inbox, data.thread_id));
         return;
       }
       case 'inbox.thread.folder.updated':

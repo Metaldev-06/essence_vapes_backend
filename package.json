@@ -13,7 +13,9 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
+    "test": "jest && npm run test:integration",
+    "test:unit": "jest",
+    "test:integration": "node --experimental-vm-modules --no-warnings=ExperimentalWarning node_modules/jest/bin/jest.js --config ./test/jest-integration.json",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
@@ -50,6 +52,7 @@
     "sanitize-html": "^2.18.1",
     "streamifier": "^0.1.1",
     "typeorm": "^1.1.1",
+    "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -68,6 +71,7 @@
     "@types/pdfkit": "^0.17.7",
     "@types/streamifier": "^0.1.2",
     "@types/supertest": "^7.2.1",
+    "@types/web-push": "^3.6.4",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",

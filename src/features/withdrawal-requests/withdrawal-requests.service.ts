@@ -7,6 +7,8 @@ import { escapeHtml } from '../../common/helpers/escape-html.helper';
 import { HandleDBExceptions } from '../../common/helpers/handleDBExeption.helper';
 import { EmailService } from '../../common/services/email/email.service';
 import { PaginationService } from '../../common/services/pagination/pagination.service';
+import { withdrawalRequestEvent } from '../notifications/notification-events';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateWithdrawalRequestDto } from './dto/create-withdrawal-request.dto';
 import { LookupWithdrawalRequestDto } from './dto/lookup-withdrawal-request.dto';
 import { QueryWithdrawalRequestsDto } from './dto/query-withdrawal-requests.dto';
@@ -35,6 +37,7 @@ export class WithdrawalRequestsService {
     private readonly repository: Repository<WithdrawalRequest>,
     private readonly paginationService: PaginationService,
     private readonly emailService: EmailService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -66,6 +69,7 @@ export class WithdrawalRequestsService {
       });
       const saved = await this.repository.save(entity);
       await this.notifyCreated(saved);
+      void this.notificationsService.publish(withdrawalRequestEvent(saved.id, saved.trackingCode));
       return toWithdrawalResponse(saved);
     } catch (error) {
       HandleDBExceptions(error, 'WithdrawalRequestsService.create');

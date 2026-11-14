@@ -8,6 +8,10 @@ import { LoggerHelper } from '../../common/helpers/logger.helper';
 import { Product } from '../products/entities/product.entity';
 import { ProductVariant } from '../products/entities/product-variant.entity';
 import { BASE_VARIANT_ID } from '../products/mappers/product-response.mapper';
+import { sanitizeErrorMessage } from '../notifications/helpers/notification-text.helper';
+import { jobFailedEvent } from '../notifications/notification-events';
+import { NotificationsService } from '../notifications/notifications.service';
+import { StockAlertService } from '../notifications/stock-alert.service';
 import { OrderItem } from './entities/order-item.entity';
 import { Order } from './entities/order.entity';
 import { OrderStatus } from './enums/order-status.enum';
@@ -20,7 +24,11 @@ import { PaymentStatus } from './enums/payment-status.enum';
  */
 @Injectable()
 export class OrdersExpirationService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly notificationsService: NotificationsService,
+    private readonly stockAlertService: StockAlertService,
+  ) {}
 
   @Interval(60_000)
   async releaseExpiredOrders(): Promise<void> {
@@ -31,7 +39,12 @@ export class OrdersExpirationService {
     for (const order of expired) {
       try {
         await this.releaseOne(order);
+        // El stock devuelto puede sacar a un producto de "agotado" - se evalúa sin esperar.
+        void this.evaluateStockOf(order.id);
       } catch (error) {
+        void this.notificationsService.publish(
+          jobFailedEvent('liberación de stock de órdenes vencidas', sanitizeErrorMessage(error)),
+        );
         LoggerHelper(
           `No se pudo liberar la orden vencida ${order.id}: ${
             error instanceof Error ? error.message : String(error)
@@ -40,6 +53,17 @@ export class OrdersExpirationService {
           true,
         );
       }
+    }
+  }
+
+  private async evaluateStockOf(orderId: string): Promise<void> {
+    try {
+      const items = await this.dataSource.getRepository(OrderItem).find({ where: { orderId } });
+      await this.stockAlertService.evaluate(
+        items.map((item) => ({ productId: item.productId, variantId: item.variantId })),
+      );
+    } catch {
+      /* El barrido periódico de stock lo vuelve a evaluar - no es crítico. */
     }
   }
 

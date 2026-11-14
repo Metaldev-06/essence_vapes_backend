@@ -16,6 +16,7 @@ import databaseConfig from './config/database.config';
 import { envValidationSchema } from './config/env.validation';
 import legalConfig from './config/legal.config';
 import mercadopagoConfig from './config/mercadopago.config';
+import notificationsConfig from './config/notifications.config';
 import openrouterConfig from './config/openrouter.config';
 import resendConfig from './config/resend.config';
 import securityConfig from './config/security.config';
@@ -29,6 +30,7 @@ import { FavoritesModule } from './features/favorites/favorites.module';
 import { HealthModule } from './features/health/health.module';
 import { LegalInfoModule } from './features/legal-info/legal-info.module';
 import { MessagesModule } from './features/messages/messages.module';
+import { NotificationsModule } from './features/notifications/notifications.module';
 import { OrdersModule } from './features/orders/orders.module';
 import { PaymentsModule } from './features/payments/payments.module';
 import { ProductsModule } from './features/products/products.module';
@@ -51,6 +53,7 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
         accountSecurityConfig,
         mercadopagoConfig,
         shippingConfig,
+        notificationsConfig,
       ],
       validationSchema: envValidationSchema,
     }),
@@ -79,6 +82,7 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
       }),
     }),
     SecurityModule,
+    NotificationsModule,
     AccountSecurityModule,
     HealthModule,
     AuthModule,

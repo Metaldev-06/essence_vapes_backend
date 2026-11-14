@@ -17,6 +17,9 @@ import { ProductCategory } from '../products/enums/product-category.enum';
 import { SaleAuthorizationStatus } from '../products/enums/sale-authorization-status.enum';
 import { BASE_VARIANT_ID } from '../products/mappers/product-response.mapper';
 import { User } from '../auth/entities/user.entity';
+import { orderDeliveryIssueEvent, orderReadyForPickupEvent } from '../notifications/notification-events';
+import { NotificationsService } from '../notifications/notifications.service';
+import { StockAlertService } from '../notifications/stock-alert.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import { UpdateLogisticsStatusDto } from './dto/update-logistics-status.dto';
@@ -126,6 +129,8 @@ export class OrdersService {
     private readonly paginationService: PaginationService,
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
+    private readonly stockAlertService: StockAlertService,
   ) {}
 
   /**
@@ -321,6 +326,11 @@ export class OrdersService {
       await queryRunner.commitTransaction();
 
       void this.notifyOrderCreated(savedOrder, savedItems);
+      // Después del commit y sin esperar: la reserva recién hecha pudo dejar algún producto en
+      // stock bajo o agotado. `evaluate` nunca lanza - no puede afectar a esta compra.
+      void this.stockAlertService.evaluate(
+        totals.lines.map((line) => ({ productId: line.productId, variantId: line.variantId })),
+      );
 
       return { order: toOrderResponse(savedOrder, savedItems), removedFromCart: removed };
     } catch (error) {
@@ -483,6 +493,12 @@ export class OrdersService {
 
     if (previousStatus !== dto.logisticsStatus) {
       void this.notifyLogisticsStatus(saved);
+      // Aviso a los DEMÁS admins (quien hizo el cambio ya lo sabe) - nunca bloquea la respuesta.
+      if (dto.logisticsStatus === LogisticsStatus.READY_FOR_PICKUP) {
+        void this.notificationsService.publish(orderReadyForPickupEvent(saved, actor.id));
+      } else if (dto.logisticsStatus === LogisticsStatus.DELIVERY_ISSUE) {
+        void this.notificationsService.publish(orderDeliveryIssueEvent(saved, actor.id));
+      }
     }
 
     const items = await this.orderItemsRepository.find({ where: { orderId } });

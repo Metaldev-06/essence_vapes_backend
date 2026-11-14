@@ -5,6 +5,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { LoggerHelper } from '../../common/helpers/logger.helper';
+import { paymentWebhookUnprocessedEvent } from '../notifications/notification-events';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentWebhookEvent } from './entities/payment-webhook-event.entity';
 import { verifyMercadoPagoSignature } from './helpers/mp-webhook-signature.helper';
 import { MercadoPagoService } from './mercadopago.service';
@@ -31,6 +33,7 @@ export class PaymentsWebhookController {
     private readonly paymentsService: PaymentsService,
     @InjectRepository(PaymentWebhookEvent)
     private readonly webhookEvents: Repository<PaymentWebhookEvent>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   @Post('mercadopago')
@@ -69,8 +72,21 @@ export class PaymentsWebhookController {
 
     const topic = queryType ?? body?.type;
     if (topic === 'order' && dataId) {
-      const mpOrder = await this.mercadoPagoService.getOrder(dataId);
-      await this.paymentsService.reconcileFromMercadoPagoOrder(mpOrder);
+      try {
+        const mpOrder = await this.mercadoPagoService.getOrder(dataId);
+        await this.paymentsService.reconcileFromMercadoPagoOrder(mpOrder);
+      } catch (error) {
+        // Se relanza igual que antes (Mercado Pago reintenta ante un no-200) - lo único nuevo es
+        // avisarle al admin. Un aviso por operación: los reintentos del mismo webhook comparten
+        // `dedupeKey`, así que una falla persistente no llena el panel.
+        void this.notificationsService.publish(
+          paymentWebhookUnprocessedEvent(
+            dataId,
+            'Mercado Pago lo va a reintentar; si el pedido no se actualiza, usá "Conciliar" en su detalle.',
+          ),
+        );
+        throw error;
+      }
     }
     // Otros tópicos (payment, merchant_order, chargebacks, etc.) todavía no tienen acción propia
     // en esta integración - se reconocen sin efecto, mismo criterio que

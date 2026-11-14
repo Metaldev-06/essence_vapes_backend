@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { Resend } from 'resend';
+import { Observable, Subject } from 'rxjs';
 
 import { LoggerHelper } from '../../helpers/logger.helper';
 
@@ -11,6 +12,14 @@ export interface SendEmailOptions {
   subject: string;
   html: string;
   replyTo?: string;
+  /** `true` para los correos del propio sistema de notificaciones: si fallan no se reporta por
+   *  `failures$` (evita el loop "falló el aviso de que falló un email"). */
+  internal?: boolean;
+}
+
+export interface EmailFailure {
+  readonly subject: string;
+  readonly reason: string;
 }
 
 export interface EmailAddresses {
@@ -30,6 +39,14 @@ export interface EmailAddresses {
 @Injectable()
 export class EmailService {
   private readonly resend: Resend | null;
+  private readonly failures = new Subject<EmailFailure>();
+
+  /**
+   * Emite cada vez que Resend rechaza o no logra enviar un correo (NO cuando falta
+   * `RESEND_API_KEY` - eso es configuración ausente, no una falla). Lo consume el módulo de
+   * notificaciones para avisarle al admin; este servicio no sabe nada de ese módulo.
+   */
+  readonly failures$: Observable<EmailFailure> = this.failures.asObservable();
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('resend.apiKey');
@@ -70,6 +87,7 @@ export class EmailService {
 
       if (error) {
         LoggerHelper(`Resend rechazó el email "${options.subject}": ${error.message}`, 'EmailService', true);
+        this.reportFailure(options, error.message);
         return false;
       }
       return true;
@@ -79,7 +97,13 @@ export class EmailService {
         'EmailService',
         true,
       );
+      this.reportFailure(options, err instanceof Error ? err.message : String(err));
       return false;
     }
+  }
+
+  private reportFailure(options: SendEmailOptions, reason: string): void {
+    if (options.internal) return;
+    this.failures.next({ subject: options.subject, reason });
   }
 }
