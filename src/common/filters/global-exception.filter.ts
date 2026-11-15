@@ -1,4 +1,5 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
+import { ThrottlerException } from '@nestjs/throttler';
 
 import { AbuseDetectionService } from '../../features/security/abuse-detection.service';
 import { SecurityEventType } from '../../features/security/enums/security-event-type.enum';
@@ -82,13 +83,27 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       });
     }
 
-    if (status === HttpStatus.TOO_MANY_REQUESTS) {
+    if (exception instanceof ThrottlerException) {
       // En el cuerpo además del header: así el front lo lee aunque un proxy o CORS oculten el
       // header, y muestra una cuenta regresiva real.
       response.status(status).json({
         statusCode: status,
         message: TOO_MANY_REQUESTS_MESSAGE,
         retryAfterSeconds: readRetryAfterSeconds(response),
+        requestId,
+      });
+      return;
+    }
+
+    // Otros 429 propios (ej. el tope diario de formularios) traen su mensaje, un `code` para que
+    // el front sepa cómo mostrarlos y cuánto falta: se respetan tal cual.
+    if (status === HttpStatus.TOO_MANY_REQUESTS && exception instanceof HttpException) {
+      const body = exception.getResponse() as { code?: unknown; retryAfterSeconds?: unknown };
+      response.status(status).json({
+        statusCode: status,
+        message,
+        code: typeof body?.code === 'string' ? body.code : undefined,
+        retryAfterSeconds: typeof body?.retryAfterSeconds === 'number' ? body.retryAfterSeconds : null,
         requestId,
       });
       return;

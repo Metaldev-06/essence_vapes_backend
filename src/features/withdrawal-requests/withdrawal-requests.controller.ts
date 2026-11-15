@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 
 import { Role } from '../../common/enums/system-role.enum';
 import { UserAwareThrottlerGuard } from '../../common/guards/user-aware-throttler.guard';
 import { Auth } from '../auth/decorators/auth.decorator';
+import { LimitedForm } from '../security/entities/form-submission.entity';
+import { FormSubmissionLimitService } from '../security/form-submission-limit.service';
 import { CreateWithdrawalRequestDto } from './dto/create-withdrawal-request.dto';
 import { LookupWithdrawalRequestDto } from './dto/lookup-withdrawal-request.dto';
 import { QueryWithdrawalRequestsDto } from './dto/query-withdrawal-requests.dto';
@@ -16,12 +18,20 @@ import { WithdrawalRequestsService } from './withdrawal-requests.service';
  */
 @Controller('withdrawal-requests')
 export class WithdrawalRequestsController {
-  constructor(private readonly withdrawalRequestsService: WithdrawalRequestsService) {}
+  constructor(
+    private readonly withdrawalRequestsService: WithdrawalRequestsService,
+    private readonly submissionLimit: FormSubmissionLimitService,
+  ) {}
 
+  /** Además del límite de ráfaga, tope de 2 solicitudes cada 24 horas por visitante - solo
+   *  cuentan las que se crearon de verdad (ver `FormSubmissionLimitService`). */
   @Post()
   @Throttle({ default: { limit: 5, ttl: 600_000 } })
-  create(@Body() dto: CreateWithdrawalRequestDto) {
-    return this.withdrawalRequestsService.create(dto);
+  async create(@Body() dto: CreateWithdrawalRequestDto, @Ip() ip: string) {
+    await this.submissionLimit.assertCanSubmit(LimitedForm.WITHDRAWAL, ip);
+    const created = await this.withdrawalRequestsService.create(dto);
+    await this.submissionLimit.recordSubmission(LimitedForm.WITHDRAWAL, ip);
+    return created;
   }
 
   @Get('lookup')

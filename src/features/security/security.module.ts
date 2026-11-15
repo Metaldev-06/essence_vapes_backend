@@ -6,8 +6,10 @@ import { AbuseDetectionService } from './abuse-detection.service';
 import { BruteForceGuard } from './brute-force.guard';
 import { BruteForceService } from './brute-force.service';
 import { AccountLockout } from './entities/account-lockout.entity';
+import { FormSubmission } from './entities/form-submission.entity';
 import { IpBlock } from './entities/ip-block.entity';
 import { SecurityEvent } from './entities/security-event.entity';
+import { FormSubmissionLimitService } from './form-submission-limit.service';
 import { IpBlockGuard } from './ip-block.guard';
 import { SecurityAdminController } from './security-admin.controller';
 import { SecurityStateService } from './security-state.service';
@@ -20,7 +22,7 @@ import { SecurityStateService } from './security-state.service';
  */
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([AccountLockout, IpBlock, SecurityEvent]), AuthModule],
+  imports: [TypeOrmModule.forFeature([AccountLockout, IpBlock, SecurityEvent, FormSubmission]), AuthModule],
   controllers: [SecurityAdminController],
   providers: [
     SecurityStateService,
@@ -28,7 +30,15 @@ import { SecurityStateService } from './security-state.service';
     AbuseDetectionService,
     BruteForceGuard,
     IpBlockGuard,
+    FormSubmissionLimitService,
   ],
-  exports: [SecurityStateService, BruteForceService, AbuseDetectionService, BruteForceGuard, IpBlockGuard],
+  exports: [
+    SecurityStateService,
+    BruteForceService,
+    AbuseDetectionService,
+    BruteForceGuard,
+    IpBlockGuard,
+    FormSubmissionLimitService,
+  ],
 })
 export class SecurityModule {}
