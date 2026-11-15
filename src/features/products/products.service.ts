@@ -27,6 +27,7 @@ import { brandCategoriesFor, capacityUnitFor } from './helpers/category-group.he
 import { matchesFileSignature } from './helpers/file-signature.helper';
 import { findRestrictedVapePhrase } from './helpers/vape-restricted-phrases.helper';
 import { slugify } from './helpers/slugify.helper';
+import { outOfStockLast } from './helpers/stock-order.helper';
 import {
   BASE_VARIANT_ID,
   flattenProductVariant,
@@ -186,7 +187,8 @@ export class ProductsService {
         });
       }
 
-      rows = this.sortRows(rows, sort, order);
+      // Las agotadas siempre al final, sea cual sea el orden elegido.
+      rows = outOfStockLast(this.sortRows(rows, sort, order));
 
       const total = rows.length;
       const data = rows.slice(offset, offset + limit);
