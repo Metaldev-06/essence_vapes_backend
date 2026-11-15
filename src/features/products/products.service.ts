@@ -28,6 +28,10 @@ import { matchesFileSignature } from './helpers/file-signature.helper';
 import { findRestrictedVapePhrase } from './helpers/vape-restricted-phrases.helper';
 import { slugify } from './helpers/slugify.helper';
 import { outOfStockLast } from './helpers/stock-order.helper';
+import { rankRelated } from './helpers/related-products.helper';
+
+/** Cuántos productos muestra "También te puede gustar" en la ficha. */
+export const RELATED_PRODUCTS_LIMIT = 4;
 import {
   BASE_VARIANT_ID,
   flattenProductVariant,
@@ -548,6 +552,59 @@ export class ProductsService {
     const product = await this.findEntityOrFail(id);
     const variants = await this.findVariantsForProduct(id);
     return toProductResponse(product, variants);
+  }
+
+  /**
+   * "También te puede gustar" de la ficha de un producto: devuelve SOLO lo que se muestra.
+   *
+   * Antes la ficha pedía `GET /products?category=...&limit=5` y descartaba en el navegador al
+   * producto actual - que venía incluido (una fila por cada tamaño, así que un perfume con varios
+   * tamaños podía ocupar todos los lugares), en el orden por defecto (los más viejos primero), sin
+   * relación con "acordes compartidos" como dice la sección.
+   *
+   * Ahora: otros productos activos de la misma categoría (el actual excluido en la consulta), UNO
+   * por perfume (la primera presentación con stock, o la base si no hay ninguna), ordenados por
+   * parecido (`rankRelated`).
+   */
+  async findRelated(id: string, limit = RELATED_PRODUCTS_LIMIT): Promise<ProductCardResponse[]> {
+    const current = await this.findEntityOrFail(id);
+
+    const candidates = await this.buildFilteredQuery({ activeOnly: true })
+      .andWhere('product.category = :category', { category: current.category })
+      .andWhere('product.id != :currentId', { currentId: current.id })
+      .getMany();
+    const variantsByProductId = await this.loadVariantsByProductId(
+      candidates.map((product) => product.id),
+    );
+
+    const items = candidates.map((product) => {
+      const card = this.representativeCard(product, variantsByProductId.get(product.id) ?? []);
+      return {
+        card,
+        accords: product.accords,
+        styles: product.styles,
+        gender: product.gender,
+        featured: product.featured,
+        inStock: card.stock > 0,
+      };
+    });
+
+    return rankRelated(current, items)
+      .slice(0, limit)
+      .map((item) => item.card);
+  }
+
+  /** La card que representa a un perfume: su primera presentación con stock (base primero, después
+   *  las variantes en su orden), o la base si están todas agotadas. */
+  private representativeCard(product: Product, variants: ProductVariant[]): ProductCardResponse {
+    const ordered = [
+      toProductCardResponse(product),
+      ...variants
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((variant) => toProductCardResponse(product, variant)),
+    ];
+    return ordered.find((card) => card.stock > 0) ?? ordered[0];
   }
 
   /** Mismo producto que `findOne`, pero con el costo de adquisición incluido (ver

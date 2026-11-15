@@ -124,6 +124,14 @@ export class ProductsController {
     return this.productsService.findOne(id);
   }
 
+  /** "También te puede gustar" de la ficha: solo los productos que se muestran, ya excluido el
+   *  actual y ordenados por parecido. */
+  @Get(':id/related')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  findRelated(@Param('id') id: string) {
+    return this.productsService.findRelated(id);
+  }
+
   /** Mismo producto que la ruta pública de arriba, pero con el costo de adquisición incluido
    *  (ver tarea, punto 4.3) - nunca expuesto por la ruta pública. Usada por el formulario admin
    *  para precargar la edición. */
