@@ -33,6 +33,7 @@ import { MessagesModule } from './features/messages/messages.module';
 import { NotificationsModule } from './features/notifications/notifications.module';
 import { OrdersModule } from './features/orders/orders.module';
 import { PaymentsModule } from './features/payments/payments.module';
+import { SharedFiltersModule } from './features/shared-filters/shared-filters.module';
 import { ProductsModule } from './features/products/products.module';
 import { IpBlockGuard } from './features/security/ip-block.guard';
 import { SecurityModule } from './features/security/security.module';
@@ -96,6 +97,7 @@ import { WithdrawalRequestsModule } from './features/withdrawal-requests/withdra
     MessagesModule,
     OrdersModule,
     PaymentsModule,
+    SharedFiltersModule,
   ],
   controllers: [AppController],
   providers: [
