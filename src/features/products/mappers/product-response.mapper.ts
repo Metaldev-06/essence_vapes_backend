@@ -11,9 +11,25 @@ export interface VariantSummary {
   priceValue: number;
   price: string;
   stock: number;
+  /** Las que se muestran: las propias de la variante o, si no tiene, las del producto. */
   images: MediaAsset[];
+  /** `true` = la variante no tiene imágenes propias y `images` son las del producto. El admin lo
+   *  usa para no ofrecer borrar como "de la variante" fotos que en realidad son del producto. */
+  inheritsImages: boolean;
   featured: boolean;
 }
+
+/** Una variante sin imágenes propias (`null`, o `[]` si se le borraron todas) usa las del producto. */
+export const hasOwnImages = (variant: ProductVariant): boolean =>
+  (variant.images?.length ?? 0) > 0;
+
+/** ÚNICA regla de qué imágenes muestra una variante - la usan tanto la vista del producto como
+ *  las cards del catálogo, para que nunca vuelvan a divergir. */
+export const effectiveVariantImages = (
+  product: Product,
+  variant: ProductVariant,
+): MediaAsset[] =>
+  hasOwnImages(variant) ? variant.images! : (product.images ?? []);
 
 const toVariantSummary = (
   product: Product,
@@ -24,7 +40,8 @@ const toVariantSummary = (
   priceValue: variant.priceValue,
   price: formatPrice(variant.priceValue),
   stock: variant.stock,
-  images: variant.images ?? product.images ?? [],
+  images: effectiveVariantImages(product, variant),
+  inheritsImages: !hasOwnImages(variant),
   featured: variant.featured,
 });
 
@@ -40,6 +57,7 @@ const buildVariants = (
     price: formatPrice(product.priceValue),
     stock: product.stock,
     images: product.images ?? [],
+    inheritsImages: false,
     featured: product.featured,
   },
   ...variants
@@ -175,7 +193,10 @@ export const toProductCardResponse = (
   styles: [] as string[],
   featured: variant ? variant.featured : product.featured,
   gender: product.gender ?? undefined,
-  images: (variant ? variant.images : product.images) ?? [],
+  // Antes era `(variant ? variant.images : product.images) ?? []`: una variante sin imágenes
+  // propias (`null`) quedaba sin foto en el catálogo aunque en su vista sí heredaba las del
+  // producto.
+  images: variant ? effectiveVariantImages(product, variant) : (product.images ?? []),
   videos: [] as MediaAsset[],
   stock: variant?.stock ?? product.stock,
   isActive: product.isActive,

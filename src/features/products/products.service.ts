@@ -929,9 +929,12 @@ export class ProductsService {
     }
 
     await this.cloudinaryService.destroy(publicId, 'image');
-    variant.images = currentImages.filter(
+    const remaining = currentImages.filter(
       (image) => image.publicId !== publicId,
     );
+    // Sin imágenes propias vuelve a heredar las del producto (`null`), en vez de quedar con una
+    // lista vacía y sin foto en ningún lado.
+    variant.images = remaining.length > 0 ? remaining : null;
     await this.productVariantsRepository.save(variant);
     return this.findOne(productId);
   }
