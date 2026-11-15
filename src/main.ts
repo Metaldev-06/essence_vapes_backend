@@ -65,7 +65,13 @@ async function bootstrap() {
   // `Accept-Encoding`) - confirmado ausente en la auditoría de performance (2026-11-11), fix
   // barato y sin riesgo.
   app.use(compression());
-  app.enableCors({ origin: security.corsAllowedOrigins, credentials: false });
+  // `Retry-After` no es un header que el navegador deje leer a otro origen por defecto: se expone
+  // para que el front pueda mostrar cuánto falta cuando se alcanza el límite de solicitudes (429).
+  app.enableCors({
+    origin: security.corsAllowedOrigins,
+    credentials: false,
+    exposedHeaders: ['Retry-After'],
+  });
   app.setGlobalPrefix('api/v1');
 
   app.useGlobalPipes(

@@ -14,9 +14,26 @@ interface RequestLike {
 
 interface ResponseLike {
   status: (code: number) => { json: (body: unknown) => void };
+  getHeader?: (name: string) => unknown;
 }
 
 const SENSITIVE_STATUS_CODES = new Set([401, 403, 404]);
+
+/** El texto de `ThrottlerException` es inglés ("Too Many Requests") - se reemplaza por uno en
+ *  español, como el resto de los errores que ve el cliente. */
+const TOO_MANY_REQUESTS_MESSAGE =
+  'Hiciste muchas solicitudes en poco tiempo. Esperá un momento y se va a reintentar solo.';
+
+/**
+ * Segundos que faltan para que el límite se libere, tal como los calculó `ThrottlerGuard` (el
+ * header `Retry-After`, que ya setea antes de tirar la excepción). Es el tiempo RESTANTE real,
+ * no el período completo: si el cliente recarga, el número sigue bajando.
+ */
+function readRetryAfterSeconds(response: ResponseLike): number | null {
+  const raw = response.getHeader?.('Retry-After');
+  const seconds = Number(Array.isArray(raw) ? raw[0] : raw);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : null;
+}
 
 /**
  * Única fuente de verdad de la forma de las respuestas de error. Cualquier excepción que
@@ -63,6 +80,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         userId: request.user?.id ?? null,
         requestId,
       });
+    }
+
+    if (status === HttpStatus.TOO_MANY_REQUESTS) {
+      // En el cuerpo además del header: así el front lo lee aunque un proxy o CORS oculten el
+      // header, y muestra una cuenta regresiva real.
+      response.status(status).json({
+        statusCode: status,
+        message: TOO_MANY_REQUESTS_MESSAGE,
+        retryAfterSeconds: readRetryAfterSeconds(response),
+        requestId,
+      });
+      return;
     }
 
     response.status(status).json({ statusCode: status, message, requestId });
